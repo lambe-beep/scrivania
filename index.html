@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f2430"><link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png"><title>Ebook Scrivania</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<section id="shelf">
+  <header class="bar"><h1>Scrivania</h1><input id="q" type="search" placeholder="Cerca…">
+    <button id="btnSync" title="Sincronizza">⟳</button><button id="btnMenu" title="Menu">⋮</button></header>
+  <div id="syncmsg"></div>
+  <div id="grid"></div>
+  <div id="empty" hidden>Nessun libro: tocca ⟳ per sincronizzare con Google Drive.</div>
+</section>
+<section id="reader" hidden>
+  <header class="bar rbar"><button id="rBack">‹</button><div id="rTitle"></div>
+    <button id="rToc" title="Indice">☰</button><button id="rAnn" title="Note ed evidenziazioni">✎</button>
+    <button id="rTts" title="Lettura vocale">🔊</button><button id="rSet" title="Aspetto">Aa</button></header>
+  <div id="rBody"></div>
+  <div id="rFoot"><input id="rSlider" type="range" min="0" max="1000" value="0"><span id="rStat"></span></div>
+  <div id="selbar" hidden></div>
+  <div id="ttsbar" hidden><button id="tPrev">⏮</button><button id="tPlay">⏯</button><button id="tStop">⏹</button><select id="tVoice"></select><input id="tRate" type="range" min="0.6" max="1.8" step="0.1" value="1"></div>
+</section>
+<div id="sheet" hidden><div id="sheetBox"><div id="sheetHead"><b id="sheetTitle"></b><button id="sheetX">✕</button></div><div id="sheetBody"></div></div></div>
+<script src="config.js"></script><script src="lib/fflate.js"></script>
+<script src="sync.js"></script><script src="reader.js"></script><script src="app.js"></script>
+</body></html>
