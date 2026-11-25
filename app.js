@@ -51,7 +51,7 @@ const App = {
       <p style="color:var(--mut);font-size:13px">I libri e le note sono salvati su questo dispositivo: puoi leggere anche offline. La sincronizzazione richiede la connessione.</p></div>`, b => {
       b.querySelector("#mSave").onclick = () => { localStorage.setItem("device", b.querySelector("#mDev").value.trim().replace(/[^\w-]/g, "") || this.device());
         localStorage.setItem("folder", b.querySelector("#mFol").value.trim()); localStorage.setItem("client_id", b.querySelector("#mCid").value.trim()); closeSheet(); };
-      b.querySelector("#mOut").onclick = () => { localStorage.removeItem("gd_ok"); closeSheet(); };
+      b.querySelector("#mOut").onclick = () => { ["gd_ok","gd_tok","gd_user"].forEach(k => localStorage.removeItem(k)); closeSheet(); };
     });
   },
 };

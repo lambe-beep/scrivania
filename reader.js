@@ -36,7 +36,7 @@ function ttsChunks(text, start = 0, maxLen = 400, minLen = 80) {
 }
 
 const Prefs = {
-  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, voice: "", rate: 1 }, JSON.parse(localStorage.getItem("prefs") || "{}")),
+  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, cbzcont: true, voice: "", rate: 1 }, JSON.parse(localStorage.getItem("prefs") || "{}")),
   set(k, v) { this.d[k] = v; localStorage.setItem("prefs", JSON.stringify(this.d)); },
 };
 const THEMES = {
@@ -240,6 +240,7 @@ async function openEpub(R, buf) {
       b.querySelector("#sF").oninput = e => { Prefs.set("fs", +e.target.value); applyTheme(); };
     });
   };
+  $("rPrev").onclick = () => openAt((R.idx || 0) - 1, 0); $("rNext").onclick = () => openAt((R.idx || 0) + 1, 0);
   $("rSlider").oninput = e => { const p = e.target.value / 10 / 100 * N, i = Math.floor(p); clearTimeout(R.sl); R.sl = setTimeout(() => openAt(Math.min(N - 1, i), p - i), 250); };
 
   // --- posizione e salvataggio
@@ -303,57 +304,95 @@ const TTS = {
   stop() { this.on = false; this.paused = false; this.gen++; if (window.speechSynthesis) speechSynthesis.cancel(); if (this.b && this.b.clear) try { this.b.clear(); } catch (e) { } },
 };
 
-// ===================================================================== PDF
+// ===================================================================== PDF (scorrimento continuo)
 async function openPdf(R, buf) {
   const pdfjs = await import("./lib/pdf.min.mjs"); pdfjs.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.mjs";
   const pdf = await pdfjs.getDocument({ data: buf }).promise, N = pdf.numPages;
-  const wrap = document.createElement("div"); wrap.className = "pdfwrap"; const cv = document.createElement("canvas"); wrap.appendChild(cv); $("rBody").appendChild(wrap);
-  let page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0)), task = null, tc = 0;
-  async function show(p) {
-    page = Math.max(0, Math.min(N - 1, p)); const pg = await pdf.getPage(page + 1), my = ++tc;
-    const vp0 = pg.getViewport({ scale: 1 }), w = wrap.clientWidth, sc = (w / vp0.width) * (Prefs.d.zoom / 100), dpr = window.devicePixelRatio || 1;
-    const vp = pg.getViewport({ scale: sc * dpr }); cv.width = vp.width; cv.height = vp.height; cv.style.width = vp.width / dpr + "px"; cv.style.height = vp.height / dpr + "px";
-    if (task) try { task.cancel(); } catch (e) { }
-    task = pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }); try { await task.promise; } catch (e) { return; }
-    if (my !== tc) return; wrap.scrollTo(0, 0); Reader.save({ type: "pdf", page }, (page + 1) / N * 100);
+  const wrap = document.createElement("div"); wrap.className = "pdfwrap"; $("rBody").appendChild(wrap);
+  const p1 = await pdf.getPage(1), vp1 = p1.getViewport({ scale: 1 });
+  let pages = [], page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0)), io = null, lastSaved = -1;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const width = () => Math.max(200, wrap.clientWidth * Prefs.d.zoom / 100);
+  async function render(i) {
+    const P = pages[i]; if (!P || P.busy || P.done === width()) return; P.busy = true;
+    try {
+      const pg = await pdf.getPage(i + 1), vp0 = pg.getViewport({ scale: 1 }), w = width(), vp = pg.getViewport({ scale: w / vp0.width * dpr });
+      const cv = P.cv; cv.width = vp.width; cv.height = vp.height; cv.style.width = w + "px"; cv.style.height = (w * vp0.height / vp0.width) + "px";
+      P.div.style.height = (w * vp0.height / vp0.width) + "px";
+      await pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; P.done = w;
+    } catch (e) { } P.busy = false;
   }
-  wrap.addEventListener("click", e => { const x = e.clientX / window.innerWidth; if (x < .25) show(page - 1); else if (x > .75) show(page + 1); });
-  $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => show(Math.round(e.target.value / 1000 * (N - 1))), 200); };
-  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); show(+b.querySelector("#pg").value - 1); }; });
+  function release(i) { const P = pages[i]; if (P && P.done && !P.busy) { P.cv.width = 1; P.cv.height = 1; P.done = 0; } }
+  function build() {
+    if (io) io.disconnect(); wrap.innerHTML = ""; pages = [];
+    const w = width(), h = w * vp1.height / vp1.width;
+    for (let i = 0; i < N; i++) {
+      const d = document.createElement("div"); d.className = "pgdiv"; d.style.cssText = `width:${w}px;height:${h}px`; const cv = document.createElement("canvas"); cv.style.width = w + "px"; d.appendChild(cv); wrap.appendChild(d);
+      pages.push({ div: d, cv, done: 0, busy: false }); d._i = i;
+    }
+    io = new IntersectionObserver(es => { for (const e of es) { const i = e.target._i; if (e.isIntersecting) render(i); else release(i); } }, { root: wrap, rootMargin: "1500px 0px" });
+    pages.forEach(p => io.observe(p.div));
+  }
+  function cur() {
+    const y = wrap.scrollTop + wrap.clientHeight * 0.25; let lo = 0, hi = N - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pages[m].div.offsetTop <= y) lo = m; else hi = m - 1; } return lo;
+  }
+  function go(p) { page = Math.max(0, Math.min(N - 1, p)); wrap.scrollTop = pages[page].div.offsetTop; }
+  let st; wrap.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => { const p = cur(); if (p !== lastSaved) { lastSaved = p; page = p; Reader.save({ type: "pdf", page: p }, (p + 1) / N * 100); } }, 150); }, { passive: true });
+  build(); go(page); setTimeout(() => go(page), 300);
+  Reader.save({ type: "pdf", page }, (page + 1) / N * 100);
+  $("rPrev").onclick = () => go(cur() - 1); $("rNext").onclick = () => go(cur() + 1);
+  $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
+  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${cur() + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
   $("rAnn").onclick = () => sheet("Evidenziazioni", "<div class='row'>Le evidenziazioni dei PDF non sono ancora disponibili (come sul minipc).</div>");
-  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Zoom<input id="z" type="range" min="60" max="300" step="10" value="${Prefs.d.zoom}"></label></div>`, b => { b.querySelector("#z").onchange = e => { Prefs.set("zoom", +e.target.value); show(page); }; });
-  TTS.bind({ async start() { const t = await pageText(page); return { text: t, start: 0, ch: page }; },
-    async next(ch) { if (ch + 1 >= N) return null; await show(ch + 1); return { text: await pageText(ch + 1), ch: ch + 1 }; }, mark() { }, clear() { } });
+  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Zoom<input id="z" type="range" min="60" max="300" step="10" value="${Prefs.d.zoom}"></label></div>`, b => { b.querySelector("#z").onchange = e => { Prefs.set("zoom", +e.target.value); const p = cur(); build(); go(p); }; });
   async function pageText(p) { const pg = await pdf.getPage(p + 1), tcn = await pg.getTextContent(); return tcn.items.map(i => i.str).join(" "); }
-  show(page);
-  return { destroy() { pdf.destroy(); } };
+  TTS.bind({ async start() { return { text: await pageText(cur()), start: 0, ch: cur() }; },
+    async next(ch) { if (ch + 1 >= N) return null; go(ch + 1); return { text: await pageText(ch + 1), ch: ch + 1 }; }, mark() { }, clear() { } });
+  return { destroy() { if (io) io.disconnect(); pdf.destroy(); } };
 }
 
-// ===================================================================== CBZ
+// ===================================================================== CBZ (continuo o pagina singola)
 async function openCbz(R, buf) {
   const files = fflate.unzipSync(buf, { filter: f => IMG.test(f.name) });
   const names = Object.keys(files).sort((a, b) => (natkey(a) < natkey(b) ? -1 : 1)), N = names.length;
   if (!N) throw new Error("nessuna immagine");
-  const wrap = document.createElement("div"); wrap.className = "cbzwrap"; const img = document.createElement("img"); wrap.appendChild(img); $("rBody").appendChild(wrap);
-  let page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0)), fit = "w", cur = null;
   const url = i => { const n = names[i], e = n.split(".").pop().toLowerCase(); return URL.createObjectURL(new Blob([files[n]], { type: MIME[e] || "image/jpeg" })); };
-  function apply() { img.style.maxWidth = fit === "w" ? "100%" : "none"; img.style.width = fit === "w" ? "100%" : "auto"; img.style.maxHeight = fit === "h" ? "100%" : "none"; if (fit === "h") { img.style.width = "auto"; img.style.height = "100%"; img.style.maxWidth = "100%"; } else img.style.height = "auto"; }
-  function show(p) {
-    page = Math.max(0, Math.min(N - 1, p)); const old = cur; cur = url(page); img.src = cur; apply(); wrap.scrollTo(0, 0);
-    if (old) setTimeout(() => URL.revokeObjectURL(old), 3000); Reader.save({ page }, (page + 1) / N * 100);
-  }
-  let lt = 0; wrap.addEventListener("click", e => {
-    const t = Date.now(); if (t - lt < 280) { fit = fit === "w" ? "h" : "w"; apply(); lt = 0; return; } lt = t;
-    const x = e.clientX / window.innerWidth; setTimeout(() => { if (lt !== t) return; if (x < .3) show(page - 1); else if (x > .7) show(page + 1); }, 290);
-  });
-  let sx = 0; wrap.addEventListener("touchstart", e => { sx = e.changedTouches[0].clientX; }, { passive: true });
-  wrap.addEventListener("touchend", e => { const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 90 && fit === "h") show(page + (d < 0 ? 1 : -1)); }, { passive: true });
-  $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => show(Math.round(e.target.value / 1000 * (N - 1))), 150); };
-  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); show(+b.querySelector("#pg").value - 1); }; });
-  $("rAnn").onclick = () => sheet("Fumetto", "<div class='row'>Tocca i lati per cambiare pagina; doppio tocco per adattare larghezza/altezza.</div>");
-  $("rSet").onclick = () => { fit = fit === "w" ? "h" : "w"; apply(); };
+  const wrap = document.createElement("div"); wrap.className = "cbzwrap"; $("rBody").appendChild(wrap);
+  let page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0));
+  const toggleMode = () => { Prefs.set("cbzcont", !Prefs.d.cbzcont); Reader.open(R.book); };
+  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
+  $("rAnn").onclick = () => sheet("Fumetto", "<div class='row'>Pulsanti ◀ ▶ in basso per cambiare pagina. Nell'impostazione Aa puoi scegliere tra scorrimento continuo e pagina singola.</div>");
   $("rTts").onclick = () => alert("La lettura vocale non è disponibile per i fumetti.");
-  show(page);
-  return { destroy() { if (cur) URL.revokeObjectURL(cur); } };
+  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Scorrimento continuo<input type="checkbox" id="mc" ${Prefs.d.cbzcont ? "checked" : ""}></label></div>`, b => { b.querySelector("#mc").onchange = () => { closeSheet(); toggleMode(); }; });
+  let go, destroy;
+  if (Prefs.d.cbzcont) {
+    const imgs = [], urls = {}; let lastSaved = -1;
+    for (let i = 0; i < N; i++) { const im = document.createElement("img"); im._i = i; im.style.cssText = "display:block;width:100%;height:auto;min-height:70vh;margin:0 auto;background:#222"; wrap.appendChild(im); imgs.push(im); }
+    const io = new IntersectionObserver(es => { for (const e of es) { const im = e.target, i = im._i;
+      if (e.isIntersecting) { if (!urls[i]) { urls[i] = url(i); im.onload = () => { im.style.minHeight = "0"; im.style.height = "auto"; }; im.src = urls[i]; } }
+      else if (urls[i] && im.complete) { im.style.height = im.clientHeight + "px"; im.style.minHeight = "0"; URL.revokeObjectURL(urls[i]); delete urls[i]; im.removeAttribute("src"); } } }, { root: wrap, rootMargin: "2500px 0px" });
+    imgs.forEach(im => io.observe(im));
+    const cur = () => { const y = wrap.scrollTop + wrap.clientHeight * 0.25; let lo = 0, hi = N - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (imgs[m].offsetTop <= y) lo = m; else hi = m - 1; } return lo; };
+    go = p => { page = Math.max(0, Math.min(N - 1, p)); wrap.scrollTop = imgs[page].offsetTop; };
+    let st; wrap.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => { const p = cur(); if (p !== lastSaved) { lastSaved = p; page = p; Reader.save({ page: p }, (p + 1) / N * 100); } }, 150); }, { passive: true });
+    $("rPrev").onclick = () => go(cur() - 1); $("rNext").onclick = () => go(cur() + 1);
+    $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
+    setTimeout(() => go(page), 80); setTimeout(() => go(page), 500); Reader.save({ page }, (page + 1) / N * 100);
+    destroy = () => { io.disconnect(); Object.values(urls).forEach(u => URL.revokeObjectURL(u)); };
+  } else {
+    const img = document.createElement("img"); wrap.appendChild(img); let fit = "w", cu = null;
+    const apply = () => { if (fit === "w") { img.style.cssText = "width:100%;height:auto;max-width:100%"; } else { img.style.cssText = "height:100%;width:auto;max-width:100%"; } };
+    go = p => { page = Math.max(0, Math.min(N - 1, p)); const old = cu; cu = url(page); img.src = cu; apply(); wrap.scrollTo(0, 0); if (old) setTimeout(() => URL.revokeObjectURL(old), 3000); Reader.save({ page }, (page + 1) / N * 100); };
+    let lt = 0; wrap.addEventListener("click", e => {
+      const t = Date.now(); if (t - lt < 280) { fit = fit === "w" ? "h" : "w"; apply(); lt = 0; return; } lt = t;
+      const x = e.clientX / window.innerWidth; setTimeout(() => { if (lt !== t) return; if (x < .3) go(page - 1); else if (x > .7) go(page + 1); }, 290); });
+    let sx = 0; wrap.addEventListener("touchstart", e => { sx = e.changedTouches[0].clientX; }, { passive: true });
+    wrap.addEventListener("touchend", e => { const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 90 && fit === "h") go(page + (d < 0 ? 1 : -1)); }, { passive: true });
+    $("rPrev").onclick = () => go(page - 1); $("rNext").onclick = () => go(page + 1);
+    $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 150); };
+    go(page); destroy = () => { if (cu) URL.revokeObjectURL(cu); };
+  }
+  return { destroy };
 }
 TTS.init();

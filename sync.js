@@ -85,15 +85,19 @@ class DriveAdapter {
     await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.onload = res; s.onerror = () => rej(new Error("Impossibile caricare Google (sei offline?)")); document.head.appendChild(s); });
   }
   async ready(interactive) {
+    if (!this.token) { try { const j = JSON.parse(localStorage.getItem("gd_tok") || "null"); if (j) { this.token = j.t; this.exp = j.e; } } catch (e) { } }
     if (this.token && Date.now() < this.exp - 60000) return true;
     if (!this.cid) throw new Error("ID cliente Google non configurato (config.js)");
     await this._gis();
-    return new Promise((res, rej) => {
-      const tc = google.accounts.oauth2.initTokenClient({ client_id: this.cid, scope: "https://www.googleapis.com/auth/drive",
-        callback: r => { if (r.error) return rej(new Error(r.error)); this.token = r.access_token; this.exp = Date.now() + r.expires_in * 1000; localStorage.setItem("gd_ok", "1"); res(true); },
+    const hint = localStorage.getItem("gd_user") || "";
+    await new Promise((res, rej) => {
+      const tc = google.accounts.oauth2.initTokenClient({ client_id: this.cid, scope: "https://www.googleapis.com/auth/drive", ...(hint ? { hint } : {}),
+        callback: r => { if (r.error) return rej(new Error(r.error)); this.token = r.access_token; this.exp = Date.now() + r.expires_in * 1000; localStorage.setItem("gd_ok", "1"); localStorage.setItem("gd_tok", JSON.stringify({ t: this.token, e: this.exp })); res(true); },
         error_callback: e => rej(new Error(e.type || "autorizzazione negata")) });
-      tc.requestAccessToken({ prompt: localStorage.getItem("gd_ok") && !interactive ? "" : (localStorage.getItem("gd_ok") ? "" : "consent") });
+      tc.requestAccessToken({ prompt: localStorage.getItem("gd_ok") ? "" : "consent" });
     });
+    if (!hint) { try { const j = await (await this._api("/drive/v3/about?fields=user(emailAddress)")).json(); if (j.user) localStorage.setItem("gd_user", j.user.emailAddress); } catch (e) { } }
+    return true;
   }
   async _api(path, opt = {}) {
     const r = await fetch("https://www.googleapis.com" + path, { ...opt, headers: { ...(opt.headers || {}), Authorization: "Bearer " + this.token } });
