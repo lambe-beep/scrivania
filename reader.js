@@ -135,7 +135,7 @@ const Reader = {
     const pct = (State.progress(R.book.id) || {}).pct || 0;
     State.addLog(R.book.id, R.secs, R.pct0, pct); State.saveNow();
     this.cur = null; $("selbar").hidden = true; $("ttsbar").hidden = true; $("rBody").innerHTML = "";
-    if (!silent) { $("reader").hidden = true; $("shelf").hidden = false; if (window.App) App.render(); }
+    if (!silent) { $("reader").hidden = true; $("shelf").hidden = false; if (typeof App !== "undefined") { App.render(); setTimeout(() => App.sync(false, true), 400); } }
   },
   save(pos, pct) { const R = this.cur; if (!R) return; State.setProgress(R.book.id, pos, pct); $("rStat").textContent = pct.toFixed(0) + "%"; $("rSlider").value = Math.round(pct * 10); },
 };

@@ -87,6 +87,7 @@ class DriveAdapter {
   async ready(interactive) {
     if (!this.token) { try { const j = JSON.parse(localStorage.getItem("gd_tok") || "null"); if (j) { this.token = j.t; this.exp = j.e; } } catch (e) { } }
     if (this.token && Date.now() < this.exp - 60000) return true;
+    if (this.noRefresh) throw new Error("sessione Google scaduta: premi ⟳ per rinnovarla");
     if (!this.cid) throw new Error("ID cliente Google non configurato (config.js)");
     await this._gis();
     const hint = localStorage.getItem("gd_user") || "";
