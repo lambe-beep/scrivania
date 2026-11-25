@@ -36,7 +36,7 @@ function ttsChunks(text, start = 0, maxLen = 400, minLen = 80) {
 }
 
 const Prefs = {
-  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, cbzcont: true, voice: "", rate: 1 }, JSON.parse(localStorage.getItem("prefs") || "{}")),
+  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, czoom: 100, cbzcont: true, voice: "", rate: 1 }, JSON.parse(localStorage.getItem("prefs") || "{}")),
   set(k, v) { this.d[k] = v; localStorage.setItem("prefs", JSON.stringify(this.d)); },
 };
 const THEMES = {
@@ -345,7 +345,7 @@ async function openPdf(R, buf) {
   $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
   $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${cur() + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
   $("rAnn").onclick = () => sheet("Evidenziazioni", "<div class='row'>Le evidenziazioni dei PDF non sono ancora disponibili (come sul minipc).</div>");
-  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Zoom<input id="z" type="range" min="60" max="300" step="10" value="${Prefs.d.zoom}"></label></div>`, b => { b.querySelector("#z").onchange = e => { Prefs.set("zoom", +e.target.value); const p = cur(); build(); go(p); }; });
+  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Larghezza pagina <span id="zv">${Prefs.d.zoom}%</span></label><input id="z" type="range" min="30" max="300" step="5" value="${Prefs.d.zoom}" style="width:100%"><p style="color:var(--mut);font-size:13px">Sopra il 100% scorri lateralmente per vedere tutta la pagina.</p></div>`, b => { b.querySelector("#z").oninput = e => { b.querySelector("#zv").textContent = e.target.value + "%"; }; b.querySelector("#z").onchange = e => { Prefs.set("zoom", +e.target.value); const p = cur(); build(); go(p); }; });
   async function pageText(p) { const pg = await pdf.getPage(p + 1), tcn = await pg.getTextContent(); return tcn.items.map(i => i.str).join(" "); }
   TTS.bind({ async start() { return { text: await pageText(cur()), start: 0, ch: cur() }; },
     async next(ch) { if (ch + 1 >= N) return null; go(ch + 1); return { text: await pageText(ch + 1), ch: ch + 1 }; }, mark() { }, clear() { } });
@@ -364,11 +364,15 @@ async function openCbz(R, buf) {
   $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
   $("rAnn").onclick = () => sheet("Fumetto", "<div class='row'>Pulsanti ◀ ▶ in basso per cambiare pagina. Nell'impostazione Aa puoi scegliere tra scorrimento continuo e pagina singola.</div>");
   $("rTts").onclick = () => alert("La lettura vocale non è disponibile per i fumetti.");
-  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Scorrimento continuo<input type="checkbox" id="mc" ${Prefs.d.cbzcont ? "checked" : ""}></label></div>`, b => { b.querySelector("#mc").onchange = () => { closeSheet(); toggleMode(); }; });
-  let go, destroy;
+  $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Larghezza pagina <span id="zv">${Prefs.d.czoom}%</span></label><input id="cz" type="range" min="30" max="300" step="5" value="${Prefs.d.czoom}" style="width:100%">
+    <label>Scorrimento continuo<input type="checkbox" id="mc" ${Prefs.d.cbzcont ? "checked" : ""}></label></div>`, b => {
+    b.querySelector("#cz").oninput = e => { b.querySelector("#zv").textContent = e.target.value + "%"; Prefs.set("czoom", +e.target.value); applyW(); };
+    b.querySelector("#mc").onchange = () => { closeSheet(); toggleMode(); }; });
+  let go, destroy, applyW = () => { };
   if (Prefs.d.cbzcont) {
     const imgs = [], urls = {}; let lastSaved = -1;
-    for (let i = 0; i < N; i++) { const im = document.createElement("img"); im._i = i; im.style.cssText = "display:block;width:100%;height:auto;min-height:70vh;margin:0 auto;background:#222"; wrap.appendChild(im); imgs.push(im); }
+    for (let i = 0; i < N; i++) { const im = document.createElement("img"); im._i = i; im.style.cssText = `display:block;width:${Prefs.d.czoom}%;height:auto;min-height:70vh;margin:0 auto;background:#222`; wrap.appendChild(im); imgs.push(im); }
+    applyW = () => { const p = cur(); imgs.forEach(im => { im.style.width = Prefs.d.czoom + "%"; if (im.getAttribute("src") || im.complete) im.style.height = "auto"; }); go(p); };
     const io = new IntersectionObserver(es => { for (const e of es) { const im = e.target, i = im._i;
       if (e.isIntersecting) { if (!urls[i]) { urls[i] = url(i); im.onload = () => { im.style.minHeight = "0"; im.style.height = "auto"; }; im.src = urls[i]; } }
       else if (urls[i] && im.complete) { im.style.height = im.clientHeight + "px"; im.style.minHeight = "0"; URL.revokeObjectURL(urls[i]); delete urls[i]; im.removeAttribute("src"); } } }, { root: wrap, rootMargin: "2500px 0px" });
@@ -382,7 +386,8 @@ async function openCbz(R, buf) {
     destroy = () => { io.disconnect(); Object.values(urls).forEach(u => URL.revokeObjectURL(u)); };
   } else {
     const img = document.createElement("img"); wrap.appendChild(img); let fit = "w", cu = null;
-    const apply = () => { if (fit === "w") { img.style.cssText = "width:100%;height:auto;max-width:100%"; } else { img.style.cssText = "height:100%;width:auto;max-width:100%"; } };
+    const apply = () => { if (fit === "w") { img.style.cssText = `width:${Prefs.d.czoom}%;height:auto;max-width:none;display:block;margin:0 auto`; } else { img.style.cssText = "height:100%;width:auto;max-width:100%"; } };
+    applyW = () => apply();
     go = p => { page = Math.max(0, Math.min(N - 1, p)); const old = cu; cu = url(page); img.src = cu; apply(); wrap.scrollTo(0, 0); if (old) setTimeout(() => URL.revokeObjectURL(old), 3000); Reader.save({ page }, (page + 1) / N * 100); };
     let lt = 0; wrap.addEventListener("click", e => {
       const t = Date.now(); if (t - lt < 280) { fit = fit === "w" ? "h" : "w"; apply(); lt = 0; return; } lt = t;
