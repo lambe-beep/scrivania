@@ -36,13 +36,68 @@ function ttsChunks(text, start = 0, maxLen = 400, minLen = 80) {
 }
 
 const Prefs = {
-  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, czoom: 100, cbzcont: true, voice: "", rate: 1 }, JSON.parse(localStorage.getItem("prefs") || "{}")),
+  d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, czoom: 100, cbzcont: true, voice: "", rate: 1, pitch: 1, vlang: "it",
+    follow: true, font: "", lh: 1.5, margin: 0.6, indent: 0, ls: 0, ws: 0, width: 48, book: false, align: "" }, JSON.parse(localStorage.getItem("prefs") || "{}")),
+  pc: null,        // impostazioni del minipc (settings.json), aggiornate a ogni sincronizzazione
   set(k, v) { this.d[k] = v; localStorage.setItem("prefs", JSON.stringify(this.d)); },
 };
+try { Prefs.pc = JSON.parse(localStorage.getItem("pcsettings") || "null"); } catch (e) { }
 const THEMES = {
-  Chiaro: "background:#fff!important;color:#111!important", Scuro: "background:#1e1e1e!important;color:#d4d4d4!important",
-  Seppia: "background:#f4ecd8!important;color:#3b2f1e!important",
+  Chiaro: "html,body{background:#fff!important;color:#111!important}",
+  Scuro: "html,body{background:#1e1e1e!important;color:#d4d4d4!important}body *{background-color:transparent!important;color:inherit!important}a,a *{color:#6cb6ff!important}img{opacity:.9}",
+  Seppia: "html,body{background:#f4ecd8!important;color:#5b4636!important}body *{background-color:transparent!important;color:inherit!important}a,a *{color:#8a5a2b!important}",
+  Nero: "html,body{background:#000!important;color:#c8c8c8!important}body *{background-color:transparent!important;color:inherit!important}a,a *{color:#6cb6ff!important}img{opacity:.85}",
 };
+const THEME_BG = { Chiaro: "#fff", Scuro: "#1e1e1e", Seppia: "#f4ecd8", Nero: "#000" };
+// caratteri incorporati nell'app (funzionano anche offline) + caratteri di sistema
+const FONTS = [
+  { id: "", label: "Come il libro" },
+  { id: "Literata", label: "Literata (serif per lettura)", file: "literata" }, { id: "Merriweather", label: "Merriweather (serif)", file: "merriweather" },
+  { id: "Lora", label: "Lora (serif)", file: "lora" }, { id: "Source Serif 4", label: "Source Serif", file: "source-serif-4" },
+  { id: "Crimson Pro", label: "Crimson Pro (serif classico)", file: "crimson-pro" },
+  { id: "Atkinson Hyperlegible", label: "Atkinson (alta leggibilità)", file: "atkinson-hyperlegible" },
+  { id: "Open Sans", label: "Open Sans (sans)", file: "open-sans" }, { id: "OpenDyslexic", label: "OpenDyslexic (dislessia)", file: "opendyslexic" },
+  { id: "Georgia,'Noto Serif',serif", label: "Serif di sistema (Georgia)", sys: true },
+  { id: "'Segoe UI',Roboto,'Noto Sans',Arial,sans-serif", label: "Sans di sistema", sys: true },
+  { id: "'Courier New',monospace", label: "Monospazio", sys: true },
+];
+function fontFaceCss() {
+  const base = new URL("lib/fonts/", location.href).href; let c = "";
+  for (const f of FONTS) if (f.file) for (const w of [400, 700]) for (const s of ["normal", "italic"])
+    c += `@font-face{font-family:'${f.id}';font-weight:${w};font-style:${s};font-display:swap;src:url(${base}${f.file}-latin-${w}-${s}.woff2) format('woff2')}`;
+  return c;
+}
+// traduce il carattere scelto sul minipc (es. "Georgia", "Segoe UI") in un carattere disponibile sul telefono
+function mapFont(fam) {
+  if (!fam) return "";
+  const n = fam.toLowerCase(), hit = FONTS.find(f => f.file && (n === f.id.toLowerCase() || n.startsWith(f.id.toLowerCase())));
+  if (hit) return `'${hit.id}',serif`;
+  if (/mono|courier|consolas|lucida console/.test(n)) return "'Courier New',monospace";
+  if (/georgia|times|garamond|palatino|book|cambria|serif|minion|baskerville|caslon|constantia|charter/.test(n) && !/sans/.test(n)) return "Georgia,'Noto Serif',serif";
+  return "'Segoe UI',Roboto,'Noto Sans',Arial,sans-serif";
+}
+// impostazioni effettive: se "segui il minipc" e disponibili, tema/carattere/impaginazione sono quelli del minipc
+function eff() {
+  const d = Prefs.d, pc = Prefs.pc;
+  const e = { theme: d.theme, font: d.font, lh: d.lh, margin: d.margin, indent: d.indent, ls: d.ls, ws: d.ws, width: d.width, book: d.book,
+    fs: d.fs, align: d.align, following: false };
+  if (d.follow && pc) {
+    const L = pc.layout || {};
+    Object.assign(e, { theme: THEMES[pc.theme] ? pc.theme : "Chiaro", font: mapFont(pc.font), following: true });
+    if (L.lh !== undefined) Object.assign(e, { lh: L.lh, margin: L.margin, indent: L.indent, ls: L.ls, ws: L.ws, width: L.width, book: !!L.book });
+  }
+  return e;
+}
+function epubCss(e) {
+  let c = fontFaceCss() + THEMES[e.theme] || "";
+  c += `body{font-size:${e.fs}%!important;margin:0 auto!important;padding:14px 16px 60px!important;max-width:${e.width}em;overflow-wrap:break-word}`;
+  c += "img,svg,video{max-width:100%!important;height:auto}";
+  if (e.font) c += `body,body *{font-family:${e.font}!important}`;
+  if (!e.book) c += `body p{margin-top:0!important;margin-bottom:${e.margin}em!important;text-indent:${e.indent}em!important}`
+    + `body,body *{line-height:${e.lh}!important;word-spacing:${e.ws}px!important;letter-spacing:${e.ls}px!important}`;
+  if (e.align) c += `body p,body li{text-align:${e.align}!important;${e.align === "justify" ? "hyphens:auto;-webkit-hyphens:auto" : ""}}`;
+  return c;
+}
 
 function sheet(title, html, onReady) {
   $("sheetTitle").textContent = title; $("sheetBody").innerHTML = html; $("sheet").hidden = false;
@@ -121,11 +176,7 @@ async function openEpub(R, buf) {
   const sc = doc.createElement("script"); sc.textContent = await (await fetch("lib/rd.js")).text(); doc.head.appendChild(sc);
   const rd = win.__rd;
   const themeEl = doc.createElement("style"); doc.head.appendChild(themeEl);
-  function applyTheme() {
-    themeEl.textContent = `html,body{${THEMES[Prefs.d.theme]}}body{font-size:${Prefs.d.fs}%!important;line-height:1.5;margin:0 auto!important;padding:14px 16px 60px!important;max-width:46em;overflow-wrap:break-word}`
-      + `img,svg,video{max-width:100%!important;height:auto}a{color:inherit}`
-      + (Prefs.d.theme === "Scuro" ? "body *{color:inherit!important;background-color:transparent!important}" : "");
-  }
+  function applyTheme() { const e = eff(); themeEl.textContent = epubCss(e); $("rBody").style.background = THEME_BG[e.theme]; }
   applyTheme();
   let HL = [];
   const hlList = () => State.hlOf(R.book.id).map(h => ({ id: h.uid, ch: h.ch, start: h.start, end: h.end, color: h.color }));
@@ -233,13 +284,36 @@ async function openEpub(R, buf) {
     sheet(`Note ed evidenziazioni (${hs.length})`, hs.map(h => `<div class="row" data-u="${h.uid}"><span class="sw" style="background:${hexOk(h.color)}"></span>${esc(h.text.slice(0, 160))}<small>${esc(labels[h.ch] || "")}${h.note ? " — " + esc(h.note) : ""}</small></div>`).join("") || "<div class='row'>Nessuna.</div>",
       b => { b.onclick = e => { const r = e.target.closest(".row"); if (!r || !r.dataset.u) return; closeSheet(); gotoHl(State.d.hl[r.dataset.u]); }; });
   };
-  $("rSet").onclick = () => {
-    sheet("Aspetto", `<div class="set"><label>Tema<select id="sT">${Object.keys(THEMES).map(t => `<option ${t === Prefs.d.theme ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      <label>Dimensione testo<input id="sF" type="range" min="70" max="220" step="5" value="${Prefs.d.fs}"></label></div>`, b => {
-      b.querySelector("#sT").onchange = e => { Prefs.set("theme", e.target.value); applyTheme(); };
-      b.querySelector("#sF").oninput = e => { Prefs.set("fs", +e.target.value); applyTheme(); };
+  function settingsSheet() {
+    const e = eff(), fol = e.following, dis = fol ? "disabled" : "";
+    const sl = (id, lab, min, max, step, v, unit = "") => `<label>${lab} <span id="v_${id}">${v}${unit}</span></label><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${v}" ${dis} style="width:100%">`;
+    sheet("Aspetto del testo", `<div class="set">
+      <label>Segui le impostazioni del minipc<input type="checkbox" id="sFol" ${Prefs.d.follow ? "checked" : ""}></label>
+      <p style="color:var(--mut);font-size:13px;margin:0 0 6px">${Prefs.pc ? (fol ? "Tema, carattere e impaginazione arrivano dal minipc (aggiornati a ogni sincronizzazione). Dimensione e allineamento restano per questo dispositivo." : "Impostazioni personalizzate per questo dispositivo.") : "Impostazioni del minipc non ancora ricevute: sincronizza."}</p>
+      <label>Tema<select id="sT" ${dis}>${Object.keys(THEMES).map(t => `<option ${t === e.theme ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label>Carattere<select id="sFont" ${dis}>${FONTS.map(f => `<option value="${esc(f.id)}" ${f.id === (fol ? "__none__" : Prefs.d.font) ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select></label>
+      ${sl("sF", "Dimensione testo", 70, 260, 5, e.fs, "%")}
+      <label>Allineamento<select id="sAl"><option value="" ${e.align === "" ? "selected" : ""}>Come il libro</option><option value="left" ${e.align === "left" ? "selected" : ""}>A sinistra</option><option value="justify" ${e.align === "justify" ? "selected" : ""}>Giustificato</option></select></label>
+      <label>Usa l'impaginazione del libro<input type="checkbox" id="sBook" ${e.book ? "checked" : ""} ${dis}></label>
+      ${sl("sLh", "Interlinea", 1, 2.6, 0.1, +(+e.lh).toFixed(1))}
+      ${sl("sMg", "Spazio tra i paragrafi (em)", 0, 3, 0.1, +(+e.margin).toFixed(1))}
+      ${sl("sIn", "Rientro prima riga (em)", 0, 4, 0.5, +(+e.indent).toFixed(1))}
+      ${sl("sLs", "Spaziatura lettere (px)", -1, 5, 0.5, +(+e.ls).toFixed(1))}
+      ${sl("sWs", "Spaziatura parole (px)", -2, 10, 0.5, +(+e.ws).toFixed(1))}
+      ${sl("sWd", "Larghezza del testo (em)", 20, 90, 2, Math.round(e.width))}
+      <div class="btns"><button id="sReset" ${dis}>Ripristina</button></div></div>`, b => {
+      const set = (k, v) => { Prefs.set(k, v); applyTheme(); };
+      const bind = (id, key, num) => { const el = b.querySelector("#" + id), out = b.querySelector("#v_" + id); el.oninput = ev => { const v = num ? +ev.target.value : ev.target.value; if (out) out.textContent = v + (id === "sF" ? "%" : ""); set(key, v); }; };
+      b.querySelector("#sFol").onchange = ev => { Prefs.set("follow", ev.target.checked); if (!ev.target.checked && Prefs.pc) { const x = eff0(); } applyTheme(); settingsSheet(); };
+      // passando a "personalizzato" si parte dai valori del minipc
+      function eff0() { const pc = Prefs.pc; if (pc) { const L = pc.layout || {}; Prefs.set("theme", THEMES[pc.theme] ? pc.theme : "Chiaro"); Prefs.set("font", FONTS.some(f => f.id === mapFont(pc.font)) ? mapFont(pc.font) : ""); if (L.lh !== undefined) ["lh", "margin", "indent", "ls", "ws", "width"].forEach(k => Prefs.set(k, L[k])); Prefs.set("book", !!L.book); } }
+      bind("sT", "theme"); bind("sFont", "font"); bind("sF", "fs", true); bind("sAl", "align"); bind("sLh", "lh", true); bind("sMg", "margin", true);
+      bind("sIn", "indent", true); bind("sLs", "ls", true); bind("sWs", "ws", true); bind("sWd", "width", true);
+      b.querySelector("#sBook").onchange = ev => set("book", ev.target.checked);
+      b.querySelector("#sReset").onclick = () => { Object.entries({ theme: "Chiaro", font: "", fs: 110, lh: 1.5, margin: 0.6, indent: 0, ls: 0, ws: 0, width: 48, book: false, align: "" }).forEach(([k, v]) => Prefs.set(k, v)); applyTheme(); settingsSheet(); };
     });
-  };
+  }
+  $("rSet").onclick = settingsSheet;
   $("rPrev").onclick = () => openAt((R.idx || 0) - 1, 0); $("rNext").onclick = () => openAt((R.idx || 0) + 1, 0);
   $("rSlider").oninput = e => { const p = e.target.value / 10 / 100 * N, i = Math.floor(p); clearTimeout(R.sl); R.sl = setTimeout(() => openAt(Math.min(N - 1, i), p - i), 250); };
 
@@ -269,39 +343,55 @@ async function openEpub(R, buf) {
 
 // ===================================================================== lettura vocale
 const TTS = {
-  b: null, on: false, paused: false, voices: [],
+  b: null, on: false, paused: false, voices: [], gen: 0,
   bind(b) { this.b = b; },
+  ui() { $("tPlay").textContent = this.on && !this.paused ? "⏸" : "▶"; $("tPlay").title = this.on && !this.paused ? "Pausa" : "Avvia"; $("rTts").style.outline = this.on ? "2px solid var(--acc)" : ""; },
   init() {
-    const load = () => { this.voices = speechSynthesis.getVoices().filter(v => /^(it|en)/i.test(v.lang)).sort((a, b) => (/^it/i.test(b.lang) - /^it/i.test(a.lang)) || a.name.localeCompare(b.name));
-      $("tVoice").innerHTML = this.voices.map(v => `<option ${v.voiceURI === Prefs.d.voice ? "selected" : ""} value="${esc(v.voiceURI)}">${esc(v.name)} (${v.lang})</option>`).join(""); };
+    const load = () => {
+      const all = (window.speechSynthesis ? speechSynthesis.getVoices() : []).slice();
+      this.voices = all;
+      const sel = $("tLang"), langs = [...new Set(all.map(v => v.lang.slice(0, 2).toLowerCase()))].sort();
+      const names = { it: "Italiano", en: "Inglese", fr: "Francese", es: "Spagnolo", de: "Tedesco", pt: "Portoghese", ru: "Russo", ja: "Giapponese", zh: "Cinese", nl: "Olandese" };
+      sel.innerHTML = `<option value="*">Tutte le lingue (${all.length})</option>` + langs.map(l => `<option value="${l}">${names[l] || l.toUpperCase()}</option>`).join("");
+      if (Prefs.d.vlang !== "*" && !langs.includes(Prefs.d.vlang)) Prefs.set("vlang", langs.includes("it") ? "it" : "*");
+      sel.value = Prefs.d.vlang; fill();
+    };
+    const fill = () => {
+      const L = Prefs.d.vlang, list = this.voices.filter(v => L === "*" || v.lang.slice(0, 2).toLowerCase() === L).sort((a, b) => a.name.localeCompare(b.name));
+      $("tVoice").innerHTML = list.map(v => `<option ${v.voiceURI === Prefs.d.voice ? "selected" : ""} value="${esc(v.voiceURI)}">${esc(v.name)} (${v.lang})${v.localService ? "" : " ☁"}</option>`).join("") || "<option>Nessuna voce</option>";
+      if (list.length && !list.some(v => v.voiceURI === Prefs.d.voice)) Prefs.set("voice", list[0].voiceURI);
+    };
     if (window.speechSynthesis) { load(); speechSynthesis.onvoiceschanged = load; }
+    $("tLang").onchange = e => { Prefs.set("vlang", e.target.value); fill(); if (this.on) this.restart(); };
     $("tVoice").onchange = e => { Prefs.set("voice", e.target.value); if (this.on) this.restart(); };
     $("tRate").value = Prefs.d.rate; $("tRate").onchange = e => { Prefs.set("rate", +e.target.value); if (this.on) this.restart(); };
+    $("tPitch").value = Prefs.d.pitch; $("tPitch").onchange = e => { Prefs.set("pitch", +e.target.value); if (this.on) this.restart(); };
     this.wire();
-    $("tPlay").onclick = () => { if (!this.on) this.play(); else if (this.paused) { this.paused = false; this.restart(); } else { this.paused = true; speechSynthesis.cancel(); this.gen++; } };
+    $("tPlay").onclick = () => { if (!this.on) this.play(); else if (this.paused) { this.paused = false; this.ui(); this.restart(); } else { this.paused = true; this.gen++; speechSynthesis.cancel(); this.ui(); } };
     $("tStop").onclick = () => { this.stop(); $("ttsbar").hidden = true; };
-    $("tPrev").onclick = () => { if (this.on) { this.i = Math.max(0, this.i - 1); this.restart(true); } };
+    $("tPrev").onclick = () => { if (this.on) { this.i = Math.max(0, this.i - 1); this.paused = false; this.ui(); this.restart(); } };
+    $("tNext").onclick = () => { if (this.on) { this.i++; this.paused = false; this.ui(); this.restart(); } };
+    this.ui();
   },
-  gen: 0,
   wire() { $("rTts").onclick = () => { if (!$("ttsbar").hidden && !this.on) { $("ttsbar").hidden = true; return; } $("ttsbar").hidden = false; if (!this.on) this.play(); }; },
   async play() {
     if (!window.speechSynthesis || !this.b) return alert("Lettura vocale non disponibile su questo browser.");
     const s = await this.b.start(); if (!s) return;
-    this.on = true; this.paused = false; this.set(s.text, s.start, s.ch);
+    this.on = true; this.paused = false; this.ui(); this.set(s.text, s.start, s.ch);
   },
-  set(text, start, ch) { this.text = text; this.ch = ch; this.ch_chunks = ttsChunks(text, start); this.i = 0; this.restart(true); },
-  restart(keepIdx) { this.gen++; speechSynthesis.cancel(); const g = this.gen; setTimeout(() => this.speak(g), 80); },
+  set(text, start, ch) { this.text = text; this.ch = ch; this.ch_chunks = ttsChunks(text, start); this.i = 0; this.restart(); },
+  restart() { this.gen++; speechSynthesis.cancel(); const g = this.gen; setTimeout(() => this.speak(g), 80); },
   speak(g) {
     if (g !== this.gen || !this.on || this.paused) return;
     const c = this.ch_chunks[this.i];
     if (!c) { this.b.next(this.ch).then(n => { if (g !== this.gen) return; if (!n) return this.stop(); this.set(n.text, 0, n.ch); }); return; }
-    const u = new SpeechSynthesisUtterance(this.text.slice(c[0], c[1]).replace(/\s+/g, " ")); u.rate = Prefs.d.rate;
-    const v = this.voices.find(x => x.voiceURI === Prefs.d.voice) || this.voices[0]; if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "it-IT";
+    const u = new SpeechSynthesisUtterance(this.text.slice(c[0], c[1]).replace(/\s+/g, " ")); u.rate = Prefs.d.rate; u.pitch = Prefs.d.pitch || 1;
+    const v = this.voices.find(x => x.voiceURI === Prefs.d.voice); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "it-IT";
     u.onend = () => { if (g !== this.gen) return; this.i++; this.speak(g); };
     u.onerror = () => { if (g === this.gen) { this.i++; this.speak(g); } };
     this.b.mark(c[0], c[1], this.ch); speechSynthesis.speak(u);
   },
-  stop() { this.on = false; this.paused = false; this.gen++; if (window.speechSynthesis) speechSynthesis.cancel(); if (this.b && this.b.clear) try { this.b.clear(); } catch (e) { } },
+  stop() { this.on = false; this.paused = false; this.gen++; if (window.speechSynthesis) speechSynthesis.cancel(); if (this.b && this.b.clear) try { this.b.clear(); } catch (e) { } this.ui(); },
 };
 
 // ===================================================================== PDF (scorrimento continuo)
@@ -401,3 +491,18 @@ async function openCbz(R, buf) {
   return { destroy };
 }
 TTS.init();
+
+// ===================================================================== tasto Indietro del telefono
+(function () {
+  let exiting = false;
+  const sentinel = () => history.pushState({ scr: 1 }, "");
+  history.replaceState({ scr: 0 }, ""); sentinel();
+  addEventListener("popstate", () => {
+    if (exiting) return;
+    if (!$("sheet").hidden) { closeSheet(); return sentinel(); }
+    if (!$("selbar").hidden) { $("selbar").hidden = true; return sentinel(); }
+    if (!$("ttsbar").hidden && !TTS.on) { $("ttsbar").hidden = true; return sentinel(); }
+    if (!$("reader").hidden) { Reader.close(); return sentinel(); }
+    if (confirm("Uscire dall'app?")) { exiting = true; history.back(); } else sentinel();
+  });
+})();

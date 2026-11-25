@@ -168,6 +168,7 @@ async function runSync(adapter, device, onMsg, interactive) {
     await DB.put("books", b.id, b);
   }
   for (const id of have.keys()) if (!wanted.has(id)) { await DB.del("books", id); await DB.del("files", id); await DB.del("covers", id); }
+  try { const st = await adapter.readJson("", "settings.json"); if (st) { localStorage.setItem("pcsettings", JSON.stringify(st)); if (typeof Prefs !== "undefined") Prefs.pc = st; } } catch (e) { }
   onMsg("Unisco note e avanzamento…");
   let ch = 0;
   const mine = device + ".json";

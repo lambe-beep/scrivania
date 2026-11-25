@@ -18,7 +18,9 @@
   <div id="rBody"></div>
   <div id="rFoot"><button id="rPrev" title="Indietro">◀</button><input id="rSlider" type="range" min="0" max="1000" value="0"><span id="rStat"></span><button id="rNext" title="Avanti">▶</button></div>
   <div id="selbar" hidden></div>
-  <div id="ttsbar" hidden><button id="tPrev">⏮</button><button id="tPlay">⏯</button><button id="tStop">⏹</button><select id="tVoice"></select><input id="tRate" type="range" min="0.6" max="1.8" step="0.1" value="1"></div>
+  <div id="ttsbar" hidden><div class="trow"><button id="tPrev" title="Frase precedente">⏮</button><button id="tPlay" title="Avvia">▶</button><button id="tNext" title="Frase successiva">⏭</button><button id="tStop" title="Ferma">⏹</button></div>
+    <div class="trow"><select id="tLang"></select><select id="tVoice"></select></div>
+    <div class="trow"><label>Velocità <input id="tRate" type="range" min="0.5" max="2" step="0.1" value="1"></label><label>Tono <input id="tPitch" type="range" min="0.5" max="1.6" step="0.1" value="1"></label></div></div>
 </section>
 <div id="sheet" hidden><div id="sheetBox"><div id="sheetHead"><b id="sheetTitle"></b><button id="sheetX">✕</button></div><div id="sheetBody"></div></div></div>
 <script src="config.js"></script><script src="lib/fflate.js"></script>
