@@ -1,4 +1,4 @@
-const V = "scrivania-v5";
+const V = "scrivania-v6";
 const SHELL = ["./", "./index.html", "./style.css", "./app.js", "./reader.js", "./sync.js", "./config.js", "./manifest.webmanifest",
   "./lib/fflate.js", "./lib/rd.js", "./lib/pdf.min.mjs", "./lib/pdf.worker.min.mjs", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting())); });

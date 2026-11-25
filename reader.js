@@ -173,6 +173,7 @@ async function openEpub(R, buf) {
   frame.srcdoc = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body></body></html>";
   await new Promise(r => frame.onload = r);
   const win = frame.contentWindow, doc = frame.contentDocument;
+  try { if (localStorage.getItem("force_fb")) win.__rdFB = true; } catch (e) { }
   const sc = doc.createElement("script"); sc.textContent = await (await fetch("lib/rd.js")).text(); doc.head.appendChild(sc);
   const rd = win.__rd;
   const themeEl = doc.createElement("style"); doc.head.appendChild(themeEl);
