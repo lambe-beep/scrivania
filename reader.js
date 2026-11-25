@@ -112,7 +112,7 @@ const Reader = {
   async open(book) {
     const blob = await DB.get("files", book.id);
     if (!blob) { alert("File non scaricato: sincronizza."); return; }
-    this.close(true); TTS.wire();
+    this.close(true); TTS.wire(); Ink.unbind(); Ink.setOn(false); $("rPen").hidden = true;
     $("shelf").hidden = true; $("reader").hidden = false; $("rTitle").textContent = book.title; $("rBody").innerHTML = "";
     const saved = State.progress(book.id);
     const R = this.cur = { book, saved: saved && saved.pos, pct0: saved ? saved.pct : 0, secs: 0, last: Date.now(), tts: null };
@@ -134,6 +134,7 @@ const Reader = {
     clearInterval(R.timer); TTS.stop(); if (R.k && R.k.destroy) R.k.destroy();
     const pct = (State.progress(R.book.id) || {}).pct || 0;
     State.addLog(R.book.id, R.secs, R.pct0, pct); State.saveNow();
+    Ink.unbind(); Ink.setOn(false); $("rPen").hidden = true;
     this.cur = null; $("selbar").hidden = true; $("ttsbar").hidden = true; $("rBody").innerHTML = "";
     if (!silent) { $("reader").hidden = true; $("shelf").hidden = false; if (typeof App !== "undefined") { App.render(); setTimeout(() => App.sync(false, true), 400); } }
   },
@@ -423,6 +424,7 @@ async function openPdf(R, buf) {
     }
     io = new IntersectionObserver(es => { for (const e of es) { const i = e.target._i; if (e.isIntersecting) render(i); else release(i); } }, { root: wrap, rootMargin: "1500px 0px" });
     pages.forEach(p => io.observe(p.div));
+    Ink.refresh();
   }
   function cur() {
     const y = wrap.scrollTop + wrap.clientHeight * 0.25; let lo = 0, hi = N - 1;
@@ -431,6 +433,7 @@ async function openPdf(R, buf) {
   function go(p) { page = Math.max(0, Math.min(N - 1, p)); wrap.scrollTop = pages[page].div.offsetTop; }
   let st; wrap.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => { const p = cur(); if (p !== lastSaved) { lastSaved = p; page = p; Reader.save({ type: "pdf", page: p }, (p + 1) / N * 100); } }, 150); }, { passive: true });
   build(); go(page); setTimeout(() => go(page), 300);
+  $("rPen").hidden = false; Ink.bind(wrap, R.book.id, () => pages.map((p, i) => ({ el: p.div, page: i })));
   Reader.save({ type: "pdf", page }, (page + 1) / N * 100);
   $("rPrev").onclick = () => go(cur() - 1); $("rNext").onclick = () => go(cur() + 1);
   $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
@@ -468,6 +471,7 @@ async function openCbz(R, buf) {
       if (e.isIntersecting) { if (!urls[i]) { urls[i] = url(i); im.onload = () => { im.style.minHeight = "0"; im.style.height = "auto"; }; im.src = urls[i]; } }
       else if (urls[i] && im.complete) { im.style.height = im.clientHeight + "px"; im.style.minHeight = "0"; URL.revokeObjectURL(urls[i]); delete urls[i]; im.removeAttribute("src"); } } }, { root: wrap, rootMargin: "2500px 0px" });
     imgs.forEach(im => io.observe(im));
+    $("rPen").hidden = false; Ink.bind(wrap, R.book.id, () => imgs.map((im, i) => ({ el: im, page: i }))); imgs.forEach(im => Ink.ro.observe(im));
     const cur = () => { const y = wrap.scrollTop + wrap.clientHeight * 0.25; let lo = 0, hi = N - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (imgs[m].offsetTop <= y) lo = m; else hi = m - 1; } return lo; };
     go = p => { page = Math.max(0, Math.min(N - 1, p)); wrap.scrollTop = imgs[page].offsetTop; };
     let st; wrap.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => { const p = cur(); if (p !== lastSaved) { lastSaved = p; page = p; Reader.save({ page: p }, (p + 1) / N * 100); } }, 150); }, { passive: true });
@@ -477,21 +481,23 @@ async function openCbz(R, buf) {
     destroy = () => { io.disconnect(); Object.values(urls).forEach(u => URL.revokeObjectURL(u)); };
   } else {
     const img = document.createElement("img"); wrap.appendChild(img); let fit = "w", cu = null;
+    $("rPen").hidden = false; Ink.bind(wrap, R.book.id, () => [{ el: img, page }]); Ink.ro.observe(img); img.addEventListener("load", () => Ink.refresh());
     const apply = () => { if (fit === "w") { img.style.cssText = `width:${Prefs.d.czoom}%;height:auto;max-width:none;display:block;margin:0 auto`; } else { img.style.cssText = "height:100%;width:auto;max-width:100%"; } };
     applyW = () => apply();
-    go = p => { page = Math.max(0, Math.min(N - 1, p)); const old = cu; cu = url(page); img.src = cu; apply(); wrap.scrollTo(0, 0); if (old) setTimeout(() => URL.revokeObjectURL(old), 3000); Reader.save({ page }, (page + 1) / N * 100); };
+    go = p => { page = Math.max(0, Math.min(N - 1, p)); const old = cu; cu = url(page); img.src = cu; apply(); wrap.scrollTo(0, 0); Ink.refresh(); if (old) setTimeout(() => URL.revokeObjectURL(old), 3000); Reader.save({ page }, (page + 1) / N * 100); };
     let lt = 0; wrap.addEventListener("click", e => {
+      if (Ink.on) return;
       const t = Date.now(); if (t - lt < 280) { fit = fit === "w" ? "h" : "w"; apply(); lt = 0; return; } lt = t;
       const x = e.clientX / window.innerWidth; setTimeout(() => { if (lt !== t) return; if (x < .3) go(page - 1); else if (x > .7) go(page + 1); }, 290); });
     let sx = 0; wrap.addEventListener("touchstart", e => { sx = e.changedTouches[0].clientX; }, { passive: true });
-    wrap.addEventListener("touchend", e => { const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 90 && fit === "h") go(page + (d < 0 ? 1 : -1)); }, { passive: true });
+    wrap.addEventListener("touchend", e => { if (Ink.on && e.changedTouches[0].touchType === "stylus") return; const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 90 && fit === "h") go(page + (d < 0 ? 1 : -1)); }, { passive: true });
     $("rPrev").onclick = () => go(page - 1); $("rNext").onclick = () => go(page + 1);
     $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 150); };
     go(page); destroy = () => { if (cu) URL.revokeObjectURL(cu); };
   }
   return { destroy };
 }
-TTS.init();
+TTS.init(); Ink.initUi();
 
 // ===================================================================== tasto Indietro del telefono
 (function () {

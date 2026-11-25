@@ -28,8 +28,8 @@ const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b =>
 
 // ---------- stato locale (avanzamento, evidenziazioni, tombstones, sessioni di lettura)
 const State = {
-  d: { books: {}, hl: {}, tomb: {}, log: {} },
-  async load() { const s = await DB.get("kv", "state"); if (s) this.d = s; return this; },
+  d: { books: {}, hl: {}, tomb: {}, log: {}, ink: {} },
+  async load() { const s = await DB.get("kv", "state"); if (s) this.d = s; if (!this.d.ink) this.d.ink = {}; return this; },
   save() { clearTimeout(this._t); this._t = setTimeout(() => DB.put("kv", "state", this.d), 300); },
   saveNow() { clearTimeout(this._t); return DB.put("kv", "state", this.d); },
   setProgress(book, pos, pct) { this.d.books[book] = { pos, pct, upd: nowIso() }; this.save(); },
@@ -42,10 +42,16 @@ const State = {
     if (secs < 10) return;
     const id = uid(); this.d.log[id] = { uid: id, book, day: new Date().toISOString().slice(0, 10), secs: Math.round(secs), from, to }; this.save();
   },
+  // tratti a mano (pennino): immutabili, si aggiungono e si cancellano (con tombstone)
+  _ix: null,
+  inkOf(book, page) { if (!this._ix) { const m = {}; for (const k of Object.values(this.d.ink)) (m[k.book + ":" + k.page] = m[k.book + ":" + k.page] || []).push(k); this._ix = m; } return this._ix[book + ":" + page] || []; },
+  addInk(k) { k.upd = nowIso(); this.d.ink[k.uid] = k; delete this.d.tomb[k.uid]; this._ix = null; this.save(); return k; },
+  delInk(u) { if (this.d.ink[u]) { delete this.d.ink[u]; this.d.tomb[u] = nowIso(); this._ix = null; this.save(); } },
+  restoreInk(k) { k = Object.assign({}, k); this.addInk(k); },
   logOf(book) { return Object.values(this.d.log).filter(l => l.book === book); },
   export(device) {
     return { device, updated: nowIso(), books: this.d.books, highlights: Object.values(this.d.hl),
-      log: Object.values(this.d.log), tombstones: Object.entries(this.d.tomb).map(([u, ts]) => ({ uid: u, ts })) };
+      log: Object.values(this.d.log), ink: Object.values(this.d.ink), tombstones: Object.entries(this.d.tomb).map(([u, ts]) => ({ uid: u, ts })) };
   },
   // integra lo stato di un altro dispositivo; ritorna il numero di cambiamenti
   merge(r, validBooks) {
@@ -61,7 +67,12 @@ const State = {
       if (ts && ts >= h.upd) continue;
       if (!c || (c.upd || "") < h.upd) { this.d.hl[h.uid] = h; n++; }
     }
-    for (const [u, ts] of Object.entries(this.d.tomb)) { const c = this.d.hl[u]; if (c && c.upd <= ts) { delete this.d.hl[u]; n++; } }
+    for (const k of r.ink || []) {
+      if (validBooks && !validBooks.has(k.book)) continue;
+      const ts = this.d.tomb[k.uid]; if (ts && ts >= k.upd) continue;
+      if (!this.d.ink[k.uid]) { this.d.ink[k.uid] = k; this._ix = null; n++; }
+    }
+    for (const [u, ts] of Object.entries(this.d.tomb)) { const c = this.d.hl[u]; if (c && c.upd <= ts) { delete this.d.hl[u]; n++; } const k = this.d.ink[u]; if (k && k.upd <= ts) { delete this.d.ink[u]; this._ix = null; n++; } }
     for (const l of r.log || []) { if (!this.d.log[l.uid]) { this.d.log[l.uid] = l; n++; } }
     return n;
   },

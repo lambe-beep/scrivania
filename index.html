@@ -13,16 +13,19 @@
 </section>
 <section id="reader" hidden>
   <header class="bar rbar"><button id="rBack">‹</button><div id="rTitle"></div>
-    <button id="rToc" title="Indice">☰</button><button id="rAnn" title="Note ed evidenziazioni">✎</button>
+    <button id="rToc" title="Indice">☰</button><button id="rPen" title="Scrivi con il pennino" hidden>🖊</button><button id="rAnn" title="Note ed evidenziazioni">✎</button>
     <button id="rTts" title="Lettura vocale">🔊</button><button id="rSet" title="Aspetto">Aa</button></header>
   <div id="rBody"></div>
   <div id="rFoot"><button id="rPrev" title="Indietro">◀</button><input id="rSlider" type="range" min="0" max="1000" value="0"><span id="rStat"></span><button id="rNext" title="Avanti">▶</button></div>
   <div id="selbar" hidden></div>
+  <div id="inkbar" hidden><div class="trow"><button data-tool="p" title="Penna">🖊</button><button data-tool="h" title="Evidenziatore">🖍</button><button data-tool="e" title="Gomma">⌫</button>
+    <button data-c="#111111" class="dot" style="background:#111"></button><button data-c="#d93025" class="dot" style="background:#d93025"></button><button data-c="#1a73e8" class="dot" style="background:#1a73e8"></button><button data-c="#188038" class="dot" style="background:#188038"></button><button data-c="#ffd400" class="dot" style="background:#ffd400"></button></div>
+    <div class="trow"><label>Spessore <input id="inkW" type="range" min="1" max="12" step="1" value="3"></label><button id="inkUndo" title="Annulla">↩</button><button id="inkClear" title="Cancella la pagina">🗑</button><button id="inkX" title="Chiudi">✕</button></div></div>
   <div id="ttsbar" hidden><div class="trow"><button id="tPrev" title="Frase precedente">⏮</button><button id="tPlay" title="Avvia">▶</button><button id="tNext" title="Frase successiva">⏭</button><button id="tStop" title="Ferma">⏹</button></div>
     <div class="trow"><select id="tLang"></select><select id="tVoice"></select></div>
     <div class="trow"><label>Velocità <input id="tRate" type="range" min="0.5" max="2" step="0.1" value="1"></label><label>Tono <input id="tPitch" type="range" min="0.5" max="1.6" step="0.1" value="1"></label></div></div>
 </section>
 <div id="sheet" hidden><div id="sheetBox"><div id="sheetHead"><b id="sheetTitle"></b><button id="sheetX">✕</button></div><div id="sheetBody"></div></div></div>
 <script src="config.js"></script><script src="lib/fflate.js"></script>
-<script src="sync.js"></script><script src="reader.js"></script><script src="app.js"></script>
+<script src="sync.js"></script><script src="ink.js"></script><script src="reader.js"></script><script src="app.js"></script>
 </body></html>
