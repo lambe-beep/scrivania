@@ -112,7 +112,7 @@ const Reader = {
   async open(book) {
     const blob = await DB.get("files", book.id);
     if (!blob) { alert("File non scaricato: sincronizza."); return; }
-    this.close(true); TTS.wire(); Ink.unbind(); Ink.setOn(false); $("rPen").hidden = true;
+    this.close(true); TTS.wire(); Aud.wire(); Ink.unbind(); Ink.setOn(false); $("rPen").hidden = true;
     $("shelf").hidden = true; $("reader").hidden = false; $("rTitle").textContent = book.title; $("rBody").innerHTML = "";
     const saved = State.progress(book.id);
     const R = this.cur = { book, saved: saved && saved.pos, pct0: saved ? saved.pct : 0, secs: 0, last: Date.now(), tts: null };
@@ -131,7 +131,7 @@ const Reader = {
   },
   close(silent) {
     const R = this.cur; if (!R) return;
-    clearInterval(R.timer); TTS.stop(); if (R.k && R.k.destroy) R.k.destroy();
+    clearInterval(R.timer); TTS.stop(); Aud.unbind(); if (R.k && R.k.destroy) R.k.destroy();
     const pct = (State.progress(R.book.id) || {}).pct || 0;
     State.addLog(R.book.id, R.secs, R.pct0, pct); State.saveNow();
     Ink.unbind(); Ink.setOn(false); $("rPen").hidden = true;
@@ -340,6 +340,13 @@ async function openEpub(R, buf) {
     mark(s, e, ch) { rd.ttsSet(s, e, ch); }, clear() { rd.ttsClear(); },
   });
 
+  Aud.bind(R.book, {
+    async start() { return JSON.parse(rd.textFrom(true)); },
+    async openCh(ch) { let s = rd.textOf(ch); if (!s) { openAt(ch, 0); await new Promise(r => setTimeout(r, 200)); s = rd.textOf(ch); } return JSON.parse(s); },
+    pos() { const s = rd.pos(); return s ? JSON.parse(s) : null; },
+    mark(s, e, ch) { rd.ttsSet(s, e, ch); }, clear() { rd.ttsClear(); },
+  });
+
   refreshHl();
   const sv = R.saved && R.saved.type === "epub" ? R.saved : { idx: 0, frac: 0 };
   openAt(sv.idx || 0, sv.frac || 0);
@@ -422,6 +429,7 @@ const TTS = {
   },
   wire() { $("rTts").onclick = () => { if (!$("ttsbar").hidden && !this.on) { $("ttsbar").hidden = true; return; } $("ttsbar").hidden = false; if (!this.on) { Keep.start(); this.play(); } }; },
   async play() {
+    if (typeof Aud !== "undefined" && Aud.a && !Aud.a.paused) Aud.pause();
     if (!window.speechSynthesis || !this.b) return alert("Lettura vocale non disponibile su questo browser.");
     const s = await this.b.start(); if (!s) return;
     this.on = true; this.paused = false; this.ui(); this.set(s.text, s.start, s.ch);

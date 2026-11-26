@@ -31,12 +31,13 @@ const App = {
     for (const u of Object.values(this.covers)) URL.revokeObjectURL(u); this.covers = {};
     const q = $("q").value.toLowerCase().split(/\s+/).filter(Boolean), g = $("grid"); g.innerHTML = "";
     let n = 0;
+    await Aud.loadIdx();
     for (const b of this.books) {
       if (q.length && !q.every(w => (b.title + " " + b.author).toLowerCase().includes(w))) continue;
       n++; const c = document.createElement("div"); c.className = "card";
       const cov = await DB.get("covers", b.id), p = State.progress(b.id);
       const url = cov ? (this.covers[b.id] = URL.createObjectURL(cov)) : "";
-      c.innerHTML = `<div class="cv" style="${url ? `background-image:url(${url})` : ""}">${url ? "" : esc(b.title)}</div><span class="fm">${b.fmt}</span>`
+      c.innerHTML = `<div class="cv" style="${url ? `background-image:url(${url})` : ""}">${url ? "" : esc(b.title)}</div><span class="fm">${b.fmt}</span>${Aud.has(b.id) ? '<span class="au">🎧</span>' : ""}`
         + `<div class="pg"><i style="width:${p ? Math.min(100, p.pct) : 0}%"></i></div><div class="tt">${esc(b.title)}</div>`;
       c.onclick = () => Reader.open(b); g.appendChild(c);
     }

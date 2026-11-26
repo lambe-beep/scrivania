@@ -134,14 +134,19 @@ class DriveAdapter {
   }
   async _sub(sub) {
     if (this.ids[sub] !== undefined) return this.ids[sub];
-    const root = await this._root();
-    if (!sub) return root;
-    const ch = await this._children(root); const f = ch.find(x => x.name === sub && x.mimeType.endsWith("folder"));
-    if (f) return (this.ids[sub] = f.id);
-    if (sub !== "state") throw new Error(`Sottocartella ${sub} mancante`);
-    const j = await (await this._api("/drive/v3/files?fields=id", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: sub, mimeType: "application/vnd.google-apps.folder", parents: [root] }) })).json();
-    return (this.ids[sub] = j.id);
+    let parent = await this._root(); if (!sub) return parent;
+    let path = "";
+    for (const p of sub.split("/")) {            // sottocartelle annidate (es. audio/<id>)
+      path = path ? path + "/" + p : p;
+      if (this.ids[path] !== undefined) { parent = this.ids[path]; continue; }
+      const ch = await this._children(parent); const f = ch.find(x => x.name === p && x.mimeType.endsWith("folder"));
+      if (f) { parent = this.ids[path] = f.id; continue; }
+      if (path !== "state") throw new Error(`Sottocartella ${path} mancante`);
+      const j = await (await this._api("/drive/v3/files?fields=id", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json();
+      parent = this.ids[path] = j.id;
+    }
+    return parent;
   }
   async list(sub) { const id = await this._sub(sub); this._cache = this._cache || {}; const ch = (await this._children(id)).filter(x => !x.mimeType.endsWith("folder")); this._cache[sub] = ch; return ch.map(x => ({ name: x.name, size: +x.size || 0, id: x.id })); }
   async _file(sub, name) { const ls = await this.list(sub); return ls.filter(x => x.name === name).pop(); }
@@ -181,6 +186,7 @@ async function runSync(adapter, device, onMsg, interactive) {
   }
   for (const id of have.keys()) if (!wanted.has(id)) { await DB.del("books", id); await DB.del("files", id); await DB.del("covers", id); }
   try { const st = await adapter.readJson("", "settings.json"); if (st) { localStorage.setItem("pcsettings", JSON.stringify(st)); if (typeof Prefs !== "undefined") Prefs.pc = st; } } catch (e) { }
+  try { const ix = await adapter.readJson("audio", "index.json"); await DB.put("kv", "audioidx", ix && ix.books ? ix.books : {}); } catch (e) { }
   onMsg("Unisco note e avanzamento…");
   let ch = 0;
   const mine = device + ".json";

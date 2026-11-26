@@ -11,6 +11,7 @@ button:active{background:var(--bd)}
 .card .cv{aspect-ratio:2/3;background:#111 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--mut);padding:8px;text-align:center}
 .card .tt{padding:6px 8px;font-size:13px;line-height:1.25;height:3.6em;overflow:hidden}
 .card .pg{height:4px;background:#111}.card .pg i{display:block;height:100%;background:var(--acc)}
+.card .au{position:absolute;top:6px;right:6px;background:#000a;border-radius:6px;font-size:12px;padding:1px 4px}
 .card .fm{position:absolute;top:6px;left:6px;background:#000a;border-radius:6px;font-size:11px;padding:1px 5px}
 #empty{padding:30px;text-align:center;color:var(--mut)}
 #reader{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg)}
@@ -23,8 +24,8 @@ button:active{background:var(--bd)}
 #rFoot input{flex:1}#rStat{font-size:12px;color:var(--mut);min-width:96px;text-align:right}
 #selbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;z-index:20;box-shadow:0 4px 18px #0009}
 .dot{width:34px;height:34px;border-radius:50%;border:2px solid #fff6;padding:0}
-#ttsbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:19}.trow{display:flex;gap:6px;align-items:center}.trow label{flex:1;font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:2px}.trow button{flex:1;font-size:20px}
-#ttsbar select{flex:1;min-width:0;max-width:100%;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:8px}#ttsbar input[type=range]{width:100%}
+#ttsbar,#audbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:19}.trow{display:flex;gap:6px;align-items:center}.trow label{flex:1;font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:2px}.trow button{flex:1;font-size:20px}
+#ttsbar select,#audbar select{flex:1;min-width:0;max-width:100%;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:8px}#ttsbar input[type=range],#audbar input[type=range]{width:100%}
 #sheet{position:fixed;inset:0;background:#0008;z-index:50;display:flex;align-items:flex-end;justify-content:center}
 #sheetBox{background:#232938;width:min(640px,100%);max-height:82vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column}
 #sheetHead{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bd)}
