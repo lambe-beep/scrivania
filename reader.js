@@ -37,7 +37,7 @@ function ttsChunks(text, start = 0, maxLen = 400, minLen = 80) {
 
 const Prefs = {
   d: Object.assign({ theme: "Chiaro", fs: 110, zoom: 100, czoom: 100, cbzcont: true, voice: "", rate: 1, pitch: 1, vlang: "it",
-    follow: true, font: "", lh: 1.5, margin: 0.6, indent: 0, ls: 0, ws: 0, width: 48, book: false, align: "" }, JSON.parse(localStorage.getItem("prefs") || "{}")),
+    wake: false, follow: true, font: "", lh: 1.5, margin: 0.6, indent: 0, ls: 0, ws: 0, width: 48, book: false, align: "" }, JSON.parse(localStorage.getItem("prefs") || "{}")),
   pc: null,        // impostazioni del minipc (settings.json), aggiornate a ogni sincronizzazione
   set(k, v) { this.d[k] = v; localStorage.setItem("prefs", JSON.stringify(this.d)); },
 };
@@ -283,8 +283,11 @@ async function openEpub(R, buf) {
   $("rToc").onclick = () => sheet("Indice", labels.map((l, i) => `<div class="row" data-i="${i}">${esc(l)}</div>`).join(""), b => { b.onclick = e => { const r = e.target.closest(".row"); if (r) { closeSheet(); openAt(+r.dataset.i, 0); } }; });
   $("rAnn").onclick = () => {
     const hs = State.hlOf(R.book.id);
-    sheet(`Note ed evidenziazioni (${hs.length})`, hs.map(h => `<div class="row" data-u="${h.uid}"><span class="sw" style="background:${hexOk(h.color)}"></span>${esc(h.text.slice(0, 160))}<small>${esc(labels[h.ch] || "")}${h.note ? " — " + esc(h.note) : ""}</small></div>`).join("") || "<div class='row'>Nessuna.</div>",
-      b => { b.onclick = e => { const r = e.target.closest(".row"); if (!r || !r.dataset.u) return; closeSheet(); gotoHl(State.d.hl[r.dataset.u]); }; });
+    sheet(`Note ed evidenziazioni (${hs.length})`, hs.map(h => `<div class="row" data-u="${h.uid}" style="display:flex;align-items:center;gap:6px"><div class="go" style="flex:1;min-width:0"><span class="sw" style="background:${hexOk(h.color)}"></span>${esc(h.text.slice(0, 160))}<small>${esc(labels[h.ch] || "")}${h.note ? " — " + esc(h.note) : ""}</small></div><button class="ed" title="Modifica" style="padding:8px 10px">✎</button><button class="dl" title="Elimina" style="padding:8px 10px">🗑</button></div>`).join("") || "<div class='row'>Nessuna.</div>",
+      b => { b.onclick = e => { const r = e.target.closest(".row"); if (!r || !r.dataset.u) return; const u = r.dataset.u;
+        if (e.target.closest(".dl")) { if (confirm("Eliminare questa evidenziazione?")) { State.delHl(u); refreshHl(); $("rAnn").onclick(); } return; }
+        if (e.target.closest(".ed")) { closeSheet(); editHl(u); return; }
+        closeSheet(); gotoHl(State.d.hl[u]); }; });
   };
   function settingsSheet() {
     const e = eff(), fol = e.following, dis = fol ? "disabled" : "";
@@ -344,10 +347,51 @@ async function openEpub(R, buf) {
 }
 
 // ===================================================================== lettura vocale
+// --- lettura in background: audio silenzioso + controlli nella schermata di blocco (Media Session) + schermo acceso opzionale
+const Keep = {
+  a: null, wl: null,
+  wav() {
+    const n = 8000, b = new Uint8Array(44 + n), v = new DataView(b.buffer), s = (o, x) => { for (let i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); };
+    s(0, "RIFF"); v.setUint32(4, 36 + n, true); s(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); s(36, "data"); v.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) b[44 + i] = 127 + (i & 1);   // quasi silenzio (non completamente zero, cosi' il sistema lo considera audio in riproduzione)
+    return URL.createObjectURL(new Blob([b], { type: "audio/wav" }));
+  },
+  start() {
+    try {
+      if (!this.a) { this.a = new Audio(this.wav()); this.a.loop = true; this.a.volume = 0.02; }
+      const p = this.a.play(); if (p && p.catch) p.catch(() => { });
+      const ms = navigator.mediaSession;
+      if (ms) {
+        const R = Reader.cur; ms.metadata = new MediaMetadata({ title: R ? R.book.title : "Lettura", artist: "Ebook Scrivania" }); ms.playbackState = "playing";
+        const h = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) { } };
+        h("play", () => $("tPlay").click()); h("pause", () => $("tPlay").click()); h("stop", () => $("tStop").click());
+        h("previoustrack", () => $("tPrev").click()); h("nexttrack", () => $("tNext").click());
+      }
+    } catch (e) { }
+    this.wake(true);
+  },
+  stop(paused) {
+    try { if (this.a) this.a.pause(); if (navigator.mediaSession) navigator.mediaSession.playbackState = paused ? "paused" : "none"; } catch (e) { }
+    this.wake(false);
+  },
+  async wake(on) {
+    try {
+      if (on && Prefs.d.wake && navigator.wakeLock && !this.wl) { this.wl = await navigator.wakeLock.request("screen"); this.wl.addEventListener("release", () => { this.wl = null; }); }
+      if (!on && this.wl) { await this.wl.release(); this.wl = null; }
+    } catch (e) { }
+  },
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !TTS.on || TTS.paused) return;
+  Keep.wake(true);
+  if (window.speechSynthesis && !speechSynthesis.speaking) TTS.restart();   // se il sistema ha fermato la voce a schermo spento, riparte dalla frase corrente
+});
+
 const TTS = {
   b: null, on: false, paused: false, voices: [], gen: 0,
   bind(b) { this.b = b; },
-  ui() { $("tPlay").textContent = this.on && !this.paused ? "⏸" : "▶"; $("tPlay").title = this.on && !this.paused ? "Pausa" : "Avvia"; $("rTts").style.outline = this.on ? "2px solid var(--acc)" : ""; },
+  ui() { if (this.on && !this.paused) Keep.start(); else Keep.stop(this.on); $("tPlay").textContent = this.on && !this.paused ? "⏸" : "▶"; $("tPlay").title = this.on && !this.paused ? "Pausa" : "Avvia"; $("rTts").style.outline = this.on ? "2px solid var(--acc)" : ""; },
   init() {
     const load = () => {
       const all = (window.speechSynthesis ? speechSynthesis.getVoices() : []).slice();
@@ -367,15 +411,16 @@ const TTS = {
     $("tLang").onchange = e => { Prefs.set("vlang", e.target.value); fill(); if (this.on) this.restart(); };
     $("tVoice").onchange = e => { Prefs.set("voice", e.target.value); if (this.on) this.restart(); };
     $("tRate").value = Prefs.d.rate; $("tRate").onchange = e => { Prefs.set("rate", +e.target.value); if (this.on) this.restart(); };
+    $("tWake").checked = !!Prefs.d.wake; $("tWake").onchange = e => { Prefs.set("wake", e.target.checked); if (this.on && !this.paused) Keep.wake(e.target.checked); };
     $("tPitch").value = Prefs.d.pitch; $("tPitch").onchange = e => { Prefs.set("pitch", +e.target.value); if (this.on) this.restart(); };
     this.wire();
-    $("tPlay").onclick = () => { if (!this.on) this.play(); else if (this.paused) { this.paused = false; this.ui(); this.restart(); } else { this.paused = true; this.gen++; speechSynthesis.cancel(); this.ui(); } };
+    $("tPlay").onclick = () => { if (!this.on || this.paused) Keep.start(); if (!this.on) this.play(); else if (this.paused) { this.paused = false; this.ui(); this.restart(); } else { this.paused = true; this.gen++; speechSynthesis.cancel(); this.ui(); } };
     $("tStop").onclick = () => { this.stop(); $("ttsbar").hidden = true; };
     $("tPrev").onclick = () => { if (this.on) { this.i = Math.max(0, this.i - 1); this.paused = false; this.ui(); this.restart(); } };
     $("tNext").onclick = () => { if (this.on) { this.i++; this.paused = false; this.ui(); this.restart(); } };
     this.ui();
   },
-  wire() { $("rTts").onclick = () => { if (!$("ttsbar").hidden && !this.on) { $("ttsbar").hidden = true; return; } $("ttsbar").hidden = false; if (!this.on) this.play(); }; },
+  wire() { $("rTts").onclick = () => { if (!$("ttsbar").hidden && !this.on) { $("ttsbar").hidden = true; return; } $("ttsbar").hidden = false; if (!this.on) { Keep.start(); this.play(); } }; },
   async play() {
     if (!window.speechSynthesis || !this.b) return alert("Lettura vocale non disponibile su questo browser.");
     const s = await this.b.start(); if (!s) return;
