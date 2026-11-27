@@ -28,8 +28,8 @@ const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b =>
 
 // ---------- stato locale (avanzamento, evidenziazioni, tombstones, sessioni di lettura)
 const State = {
-  d: { books: {}, hl: {}, tomb: {}, log: {}, ink: {} },
-  async load() { const s = await DB.get("kv", "state"); if (s) this.d = s; if (!this.d.ink) this.d.ink = {}; return this; },
+  d: { books: {}, hl: {}, tomb: {}, log: {}, ink: {}, hist: {} },
+  async load() { const s = await DB.get("kv", "state"); if (s) this.d = s; if (!this.d.ink) this.d.ink = {}; if (!this.d.hist) this.d.hist = {}; return this; },
   save() { clearTimeout(this._t); this._t = setTimeout(() => DB.put("kv", "state", this.d), 300); },
   saveNow() { clearTimeout(this._t); return DB.put("kv", "state", this.d); },
   setProgress(book, pos, pct) { this.d.books[book] = { pos, pct, upd: nowIso() }; this.save(); },
@@ -51,7 +51,7 @@ const State = {
   logOf(book) { return Object.values(this.d.log).filter(l => l.book === book); },
   export(device) {
     return { device, updated: nowIso(), books: this.d.books, highlights: Object.values(this.d.hl),
-      log: Object.values(this.d.log), ink: Object.values(this.d.ink), tombstones: Object.entries(this.d.tomb).map(([u, ts]) => ({ uid: u, ts })) };
+      log: Object.values(this.d.log), ink: Object.values(this.d.ink), hist: this.d.hist, tombstones: Object.entries(this.d.tomb).map(([u, ts]) => ({ uid: u, ts })) };
   },
   // integra lo stato di un altro dispositivo; ritorna il numero di cambiamenti
   merge(r, validBooks) {
@@ -66,6 +66,12 @@ const State = {
       const c = this.d.hl[h.uid], ts = this.d.tomb[h.uid];
       if (ts && ts >= h.upd) continue;
       if (!c || (c.upd || "") < h.upd) { this.d.hl[h.uid] = h; n++; }
+    }
+    for (const [b, L] of Object.entries(r.hist || {})) {      // cronologia posizioni: unione, al massimo 30 per libro
+      if (validBooks && !validBooks.has(b)) continue;
+      const cur = this.d.hist[b] = this.d.hist[b] || [], have = new Set(cur.map(x => x.ts + "|" + x.pct));
+      for (const x of L) if (x && x.ts && !have.has(x.ts + "|" + x.pct)) { cur.push(x); n++; }
+      cur.sort((a, c) => a.ts.localeCompare(c.ts)); while (cur.length > 30) cur.shift();
     }
     for (const k of r.ink || []) {
       if (validBooks && !validBooks.has(k.book)) continue;

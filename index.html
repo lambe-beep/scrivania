@@ -16,7 +16,15 @@
     <button id="rToc" title="Indice">☰</button><button id="rPen" title="Scrivi con il pennino" hidden>🖊</button><button id="rAud" title="Ascolta l'audiolibro" hidden>🎧</button><button id="rAnn" title="Note ed evidenziazioni">✎</button>
     <button id="rTts" title="Lettura vocale">🔊</button><button id="rSet" title="Aspetto">Aa</button></header>
   <div id="rBody"></div>
-  <div id="rFoot"><button id="rPrev" title="Indietro">◀</button><input id="rSlider" type="range" min="0" max="1000" value="0"><span id="rStat"></span><button id="rNext" title="Avanti">▶</button></div>
+  <div id="rFoot"><button id="rPrev" title="Indietro">◀</button><input id="rSlider" type="range" min="0" max="1000" value="0"><span id="rStat"></span><button id="rNext" title="Avanti">▶</button><button id="rHist" title="Dove ero">🕘</button><button id="rLum" title="Luminosità e filtri">☀</button></div>
+  <div id="rTint" hidden></div><div id="jumpToast" hidden></div>
+  <div id="lumbar" hidden><div class="lrow"><span>Luminosità</span><button data-st="lmBr,lumBr,-5">−</button><input id="lmBr" type="range" min="40" max="130" step="1"><button data-st="lmBr,lumBr,5">+</button></div>
+    <label class="lchk"><input type="checkbox" id="lmBlue"> Filtro luce blu per la protezione occhi</label>
+    <div class="lrow"><span>Opacità</span><button data-st="lmBa,lumBa,-5">−</button><input id="lmBa" type="range" min="0" max="70" step="1"><button data-st="lmBa,lumBa,5">+</button></div>
+    <div class="lrow"><span>Contrasto</span><button data-st="lmCt,lumCt,-5">−</button><input id="lmCt" type="range" min="70" max="140" step="1"><button data-st="lmCt,lumCt,5">+</button></div>
+    <label class="lchk"><input type="checkbox" id="lmImm"> Nascondi i pulsanti (tocca al centro per mostrarli)</label>
+    <div class="lrow"><button id="lmReset">Ripristina</button><button id="lmX">Chiudi</button></div>
+    <div style="font-size:11px;opacity:.7">Agisce solo sulla pagina del libro: la luminosità del telefono non cambia.</div></div>
   <div id="selbar" hidden></div>
   <div id="inkbar" hidden><div class="trow"><button data-tool="p" title="Penna">🖊</button><button data-tool="h" title="Evidenziatore">🖍</button><button data-tool="e" title="Gomma">⌫</button>
     <button data-c="#111111" class="dot" style="background:#111"></button><button data-c="#d93025" class="dot" style="background:#d93025"></button><button data-c="#1a73e8" class="dot" style="background:#1a73e8"></button><button data-c="#188038" class="dot" style="background:#188038"></button><button data-c="#ffd400" class="dot" style="background:#ffd400"></button></div>
@@ -36,5 +44,5 @@
 </section>
 <div id="sheet" hidden><div id="sheetBox"><div id="sheetHead"><b id="sheetTitle"></b><button id="sheetX">✕</button></div><div id="sheetBody"></div></div></div>
 <script src="config.js"></script><script src="lib/fflate.js"></script>
-<script src="sync.js"></script><script src="ink.js"></script><script src="reader.js"></script><script src="audio.js"></script><script src="app.js"></script>
+<script src="sync.js"></script><script src="ink.js"></script><script src="reader.js"></script><script src="audio.js"></script><script src="comfort.js"></script><script src="app.js"></script>
 </body></html>

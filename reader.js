@@ -214,7 +214,7 @@ async function openEpub(R, buf) {
     setTimeout(() => { rd.setFrac(idx, frac || 0); }, 60);
   }
   function gotoPath(p, frag) {
-    const i = spine.indexOf(p); if (i < 0) return; openAt(i, 0);
+    Reader.markJump(); const i = spine.indexOf(p); if (i < 0) return; openAt(i, 0);
     if (frag) setTimeout(() => { const e = doc.getElementById(frag) || doc.querySelector(`[name="${CSS.escape(frag)}"]`); if (e) win.scrollTo(0, win.scrollY + e.getBoundingClientRect().top - 20); }, 120);
   }
   function gotoHl(h) {
@@ -233,7 +233,8 @@ async function openEpub(R, buf) {
     const a = e.target.closest && e.target.closest("a[href^='#__lk:']");
     if (a) { e.preventDefault(); const [p, f] = a.getAttribute("href").slice(6).split("|"); gotoPath(p, f); return; }
     const s = win.getSelection(); if (s && !s.isCollapsed) return;
-    const id = rd.hlAt(e.clientX, e.clientY); if (id) { e.preventDefault(); editHl(id); }
+    const id = rd.hlAt(e.clientX, e.clientY); if (id) { e.preventDefault(); editHl(id); return; }
+    Comfort.tap(e, win);
   });
   function hexOk(c) { return COLORS[c] || c; }
   function showSelBar(sel) {
@@ -280,7 +281,7 @@ async function openEpub(R, buf) {
   $("sheetX").addEventListener("click", () => { R.noteEdit = false; });
 
   // --- barre
-  $("rToc").onclick = () => sheet("Indice", labels.map((l, i) => `<div class="row" data-i="${i}">${esc(l)}</div>`).join(""), b => { b.onclick = e => { const r = e.target.closest(".row"); if (r) { closeSheet(); openAt(+r.dataset.i, 0); } }; });
+  $("rToc").onclick = () => sheet("Indice", labels.map((l, i) => `<div class="row" data-i="${i}">${esc(l)}</div>`).join(""), b => { b.onclick = e => { const r = e.target.closest(".row"); if (r) { closeSheet(); Reader.markJump(); openAt(+r.dataset.i, 0); } }; });
   $("rAnn").onclick = () => {
     const hs = State.hlOf(R.book.id);
     sheet(`Note ed evidenziazioni (${hs.length})`, hs.map(h => `<div class="row" data-u="${h.uid}" style="display:flex;align-items:center;gap:6px"><div class="go" style="flex:1;min-width:0"><span class="sw" style="background:${hexOk(h.color)}"></span>${esc(h.text.slice(0, 160))}<small>${esc(labels[h.ch] || "")}${h.note ? " — " + esc(h.note) : ""}</small></div><button class="ed" title="Modifica" style="padding:8px 10px">✎</button><button class="dl" title="Elimina" style="padding:8px 10px">🗑</button></div>`).join("") || "<div class='row'>Nessuna.</div>",
@@ -320,7 +321,7 @@ async function openEpub(R, buf) {
   }
   $("rSet").onclick = settingsSheet;
   $("rPrev").onclick = () => openAt((R.idx || 0) - 1, 0); $("rNext").onclick = () => openAt((R.idx || 0) + 1, 0);
-  $("rSlider").oninput = e => { const p = e.target.value / 10 / 100 * N, i = Math.floor(p); clearTimeout(R.sl); R.sl = setTimeout(() => openAt(Math.min(N - 1, i), p - i), 250); };
+  $("rSlider").oninput = e => { Reader.markJump(); const p = e.target.value / 10 / 100 * N, i = Math.floor(p); clearTimeout(R.sl); R.sl = setTimeout(() => openAt(Math.min(N - 1, i), p - i), 250); };
 
   // --- posizione e salvataggio
   let last = "", lo = 0, hi = 0;
@@ -349,6 +350,8 @@ async function openEpub(R, buf) {
 
   refreshHl();
   const sv = R.saved && R.saved.type === "epub" ? R.saved : { idx: 0, frac: 0 };
+  R.goPos = p => openAt(p.idx || 0, p.frac || 0); R.lab = p => labels[p.idx] || "";
+  R.snip = () => { const t = JSON.parse(rd.textFrom(true)); return (t.text || "").slice(t.start || 0, (t.start || 0) + 70).replace(/\s+/g, " ").trim(); };
   openAt(sv.idx || 0, sv.frac || 0);
   return { destroy() { clearInterval(poll); Object.values(urls).forEach(u => URL.revokeObjectURL(u)); }, N };
 }
@@ -456,6 +459,7 @@ async function openPdf(R, buf) {
   const wrap = document.createElement("div"); wrap.className = "pdfwrap"; $("rBody").appendChild(wrap);
   const p1 = await pdf.getPage(1), vp1 = p1.getViewport({ scale: 1 });
   let pages = [], page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0)), io = null, lastSaved = -1;
+  R.goPos = p => go(p.page || 0); R.lab = p => "pagina " + ((p.page || 0) + 1);
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const width = () => Math.max(200, wrap.clientWidth * Prefs.d.zoom / 100);
   async function render(i) {
@@ -489,8 +493,8 @@ async function openPdf(R, buf) {
   $("rPen").hidden = false; Ink.bind(wrap, R.book.id, () => pages.map((p, i) => ({ el: p.div, page: i })));
   Reader.save({ type: "pdf", page }, (page + 1) / N * 100);
   $("rPrev").onclick = () => go(cur() - 1); $("rNext").onclick = () => go(cur() + 1);
-  $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
-  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${cur() + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
+  $("rSlider").oninput = e => { Reader.markJump(); clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
+  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${cur() + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); Reader.markJump(); go(+b.querySelector("#pg").value - 1); }; });
   $("rAnn").onclick = () => sheet("Evidenziazioni", "<div class='row'>Le evidenziazioni dei PDF non sono ancora disponibili (come sul minipc).</div>");
   $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Larghezza pagina <span id="zv">${Prefs.d.zoom}%</span></label><input id="z" type="range" min="30" max="300" step="5" value="${Prefs.d.zoom}" style="width:100%"><p style="color:var(--mut);font-size:13px">Sopra il 100% scorri lateralmente per vedere tutta la pagina.</p></div>`, b => { b.querySelector("#z").oninput = e => { b.querySelector("#zv").textContent = e.target.value + "%"; }; b.querySelector("#z").onchange = e => { Prefs.set("zoom", +e.target.value); const p = cur(); build(); go(p); }; });
   async function pageText(p) { const pg = await pdf.getPage(p + 1), tcn = await pg.getTextContent(); return tcn.items.map(i => i.str).join(" "); }
@@ -508,7 +512,7 @@ async function openCbz(R, buf) {
   const wrap = document.createElement("div"); wrap.className = "cbzwrap"; $("rBody").appendChild(wrap);
   let page = Math.min(N - 1, Math.max(0, (R.saved && R.saved.page) || 0));
   const toggleMode = () => { Prefs.set("cbzcont", !Prefs.d.cbzcont); Reader.open(R.book); };
-  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); go(+b.querySelector("#pg").value - 1); }; });
+  $("rToc").onclick = () => sheet("Vai a pagina", `<div class="set"><label>Pagina (1-${N})<input id="pg" type="text" inputmode="numeric" value="${page + 1}"></label><div class="btns"><button id="go">Vai</button></div></div>`, b => { b.querySelector("#go").onclick = () => { closeSheet(); Reader.markJump(); go(+b.querySelector("#pg").value - 1); }; });
   $("rAnn").onclick = () => sheet("Fumetto", "<div class='row'>Pulsanti ◀ ▶ in basso per cambiare pagina. Nell'impostazione Aa puoi scegliere tra scorrimento continuo e pagina singola.</div>");
   $("rTts").onclick = () => alert("La lettura vocale non è disponibile per i fumetti.");
   $("rSet").onclick = () => sheet("Aspetto", `<div class="set"><label>Larghezza pagina <span id="zv">${Prefs.d.czoom}%</span></label><input id="cz" type="range" min="30" max="300" step="5" value="${Prefs.d.czoom}" style="width:100%">
@@ -516,6 +520,7 @@ async function openCbz(R, buf) {
     b.querySelector("#cz").oninput = e => { b.querySelector("#zv").textContent = e.target.value + "%"; Prefs.set("czoom", +e.target.value); applyW(); };
     b.querySelector("#mc").onchange = () => { closeSheet(); toggleMode(); }; });
   let go, destroy, applyW = () => { };
+  R.goPos = p => go(p.page || 0); R.lab = p => "pagina " + ((p.page || 0) + 1);
   if (Prefs.d.cbzcont) {
     const imgs = [], urls = {}; let lastSaved = -1;
     for (let i = 0; i < N; i++) { const im = document.createElement("img"); im._i = i; im.style.cssText = `display:block;width:${Prefs.d.czoom}%;height:auto;min-height:70vh;margin:0 auto;background:#222`; wrap.appendChild(im); imgs.push(im); }
@@ -529,7 +534,7 @@ async function openCbz(R, buf) {
     go = p => { page = Math.max(0, Math.min(N - 1, p)); wrap.scrollTop = imgs[page].offsetTop; };
     let st; wrap.addEventListener("scroll", () => { clearTimeout(st); st = setTimeout(() => { const p = cur(); if (p !== lastSaved) { lastSaved = p; page = p; Reader.save({ page: p }, (p + 1) / N * 100); } }, 150); }, { passive: true });
     $("rPrev").onclick = () => go(cur() - 1); $("rNext").onclick = () => go(cur() + 1);
-    $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
+    $("rSlider").oninput = e => { Reader.markJump(); clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 200); };
     setTimeout(() => go(page), 80); setTimeout(() => go(page), 500); Reader.save({ page }, (page + 1) / N * 100);
     destroy = () => { io.disconnect(); Object.values(urls).forEach(u => URL.revokeObjectURL(u)); };
   } else {
@@ -545,7 +550,7 @@ async function openCbz(R, buf) {
     let sx = 0; wrap.addEventListener("touchstart", e => { sx = e.changedTouches[0].clientX; }, { passive: true });
     wrap.addEventListener("touchend", e => { if (Ink.on && e.changedTouches[0].touchType === "stylus") return; const d = e.changedTouches[0].clientX - sx; if (Math.abs(d) > 90 && fit === "h") go(page + (d < 0 ? 1 : -1)); }, { passive: true });
     $("rPrev").onclick = () => go(page - 1); $("rNext").onclick = () => go(page + 1);
-    $("rSlider").oninput = e => { clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 150); };
+    $("rSlider").oninput = e => { Reader.markJump(); clearTimeout(R.sl); R.sl = setTimeout(() => go(Math.round(e.target.value / 1000 * (N - 1))), 150); };
     go(page); destroy = () => { if (cu) URL.revokeObjectURL(cu); };
   }
   return { destroy };
