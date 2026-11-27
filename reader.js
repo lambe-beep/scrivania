@@ -563,6 +563,16 @@ TTS.init(); Ink.initUi();
     if (!$("selbar").hidden) { $("selbar").hidden = true; return sentinel(); }
     if (!$("ttsbar").hidden && !TTS.on) { $("ttsbar").hidden = true; return sentinel(); }
     if (!$("reader").hidden) { Reader.close(); return sentinel(); }
-    if (confirm("Uscire dall'app?")) { exiting = true; history.back(); } else sentinel();
+    if (confirm("Uscire dall'app?")) {
+      // una pagina web non puo' chiudere l'app con history.back(): si prova window.close(); se non basta, siamo gia' all'ultima voce
+      // della cronologia, quindi un secondo "Indietro" di Android esce davvero
+      exiting = true; try { window.close(); } catch (e) { }
+      setTimeout(() => {
+        const d = document.createElement("div"); d.textContent = "Premi ancora Indietro per uscire";
+        d.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:20px;z-index:99;font-size:14px";
+        document.body.appendChild(d);
+        setTimeout(() => { d.remove(); exiting = false; sentinel(); }, 3500);
+      }, 400);
+    } else sentinel();
   });
 })();

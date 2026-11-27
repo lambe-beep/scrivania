@@ -21,10 +21,13 @@ button:active{background:var(--bd)}
 #rBody .pdfwrap,#rBody .cbzwrap{position:absolute;inset:0;overflow:auto;background:#222;text-align:center;-webkit-overflow-scrolling:touch}
 .pdfwrap canvas,.cbzwrap img{max-width:none;background:#fff}
 #rFoot{display:flex;gap:8px;align-items:center;padding:6px 10px;padding-bottom:max(6px,env(safe-area-inset-bottom));background:#171b25}
-#rFoot input{flex:1}#rStat{font-size:12px;color:var(--mut);min-width:96px;text-align:right}
+#rFoot input{flex:1;min-width:0}#rStat{font-size:12px;color:var(--mut);min-width:0;text-align:right}
+body.bs-s .rbar button,body.bs-s #audbar button,body.bs-s #ttsbar button,body.bs-s #rFoot button{font-size:13px;padding:4px 6px}
+body.bs-l .rbar button,body.bs-l #audbar button,body.bs-l #ttsbar button,body.bs-l #rFoot button{font-size:19px;padding:10px 16px}
+#audbar .trow select{min-width:0}
 #selbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;z-index:20;box-shadow:0 4px 18px #0009}
 .dot{width:34px;height:34px;border-radius:50%;border:2px solid #fff6;padding:0}
-#ttsbar,#audbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:19}.trow{display:flex;gap:6px;align-items:center}.trow label{flex:1;font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:2px}.trow button{flex:1;font-size:20px}
+#ttsbar,#audbar{position:fixed;left:8px;right:8px;bottom:64px;background:#171b25;border:1px solid var(--bd);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:8px;z-index:19}.trow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#audbar,#ttsbar{max-height:62vh;overflow-y:auto}#audbar .trow button,#ttsbar .trow button{flex:1 1 44px;min-width:0}.trow label{flex:1;font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:2px}.trow button{flex:1;font-size:20px}
 #ttsbar select,#audbar select{flex:1;min-width:0;max-width:100%;background:var(--card);color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:8px}#ttsbar input[type=range],#audbar input[type=range]{width:100%}
 #sheet{position:fixed;inset:0;background:#0008;z-index:50;display:flex;align-items:flex-end;justify-content:center}
 #sheetBox{background:#232938;width:min(640px,100%);max-height:82vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column}
@@ -45,3 +48,4 @@ textarea{width:100%;min-height:90px}
 #inkbar button{flex:1;font-size:20px;min-height:40px}#inkbar button.act,#rPen.act{outline:2px solid var(--acc);background:#243}
 #inkbar .dot{flex:0 0 36px;height:36px;border-radius:50%;border:2px solid #fff;min-height:0}#inkbar .dot.act{outline:3px solid var(--acc)}
 #inkbar label{flex:2;font-size:13px;color:var(--mut);display:flex;flex-direction:column;gap:2px}#inkbar input[type=range]{width:100%}
+.rbar{overflow-x:auto;scrollbar-width:none}.rbar::-webkit-scrollbar{display:none}.rbar button{flex:0 0 auto}#rTitle{min-width:0;flex:1 1 20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

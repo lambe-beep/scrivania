@@ -187,6 +187,7 @@ const Aud = {
     if ($("aChap") && this.meta && this.ci >= 0) $("aChap").textContent = this.meta.chapters[this.ci].title;
   },
 
+  applyBs() { document.body.classList.remove("bs-s", "bs-m", "bs-l"); document.body.classList.add("bs-" + (Prefs.d.bsize || "m")); },
   wire() {
     if (this._w) return; this._w = true;
     $("rAud").onclick = () => { const bar = $("audbar"); bar.hidden = !bar.hidden; if (!bar.hidden) { $("ttsbar").hidden = true; $("aRate").value = String(this.rate()); this.showCache(); } };
@@ -200,8 +201,10 @@ const Aud = {
     $("aDel").onclick = async () => { if (!this.bookId) return; const c = await this.cacheInfo(); if (!c.n) { this.msg("Niente da eliminare"); return; }
       if (!confirm(`Eliminare dal telefono l'audio scaricato di questo libro (${c.n} capitoli, ${c.mb.toFixed(0)} MB)? Resta su Drive e si può riscaricare.`)) return;
       const n = await this.clearCache(); this.msg(`Eliminati ${n} capitoli dal telefono`); };
+    $("aBs").value = Prefs.d.bsize || "m"; $("aBs").onchange = e => { Prefs.set("bsize", e.target.value); Aud.applyBs(); };
     $("aAutoDel").checked = !!Prefs.d.audel; $("aAutoDel").onchange = e => Prefs.set("audel", e.target.checked);
     $("aSeek").oninput = () => { this.seeking = true; $("aTime").textContent = this.fmt($("aSeek").value); };
     $("aSeek").onchange = () => { this.seeking = false; if (this.a && this.ci >= 0) this.a.currentTime = +$("aSeek").value; };
   },
 };
+try { Aud.applyBs(); } catch (e) { }
