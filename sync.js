@@ -141,7 +141,7 @@ class DriveAdapter {
       if (this.ids[path] !== undefined) { parent = this.ids[path]; continue; }
       const ch = await this._children(parent); const f = ch.find(x => x.name === p && x.mimeType.endsWith("folder"));
       if (f) { parent = this.ids[path] = f.id; continue; }
-      if (path !== "state") throw new Error(`Sottocartella ${path} mancante`);
+      if (path !== "state" && path !== "devices" && path !== "cmd") throw new Error(`Sottocartella ${path} mancante`);
       const j = await (await this._api("/drive/v3/files?fields=id", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) })).json();
       parent = this.ids[path] = j.id;
@@ -162,16 +162,52 @@ class DriveAdapter {
 }
 
 // ---------- ciclo di sincronizzazione
+// ---------- comandi dal minipc (cancellare audio/libri su questo telefono) e rapporto sullo spazio occupato
+async function runCommands(adapter, device) {
+  let cmds = []; try { const f = await adapter.readJson("cmd", device + ".json"); cmds = (f && f.cmds) || []; } catch (e) { return 0; }
+  const done = new Set((await DB.get("kv", "cmddone")) || []), nodl = new Set((await DB.get("kv", "nodl")) || []); let n = 0;
+  const delAud = async id => { for (const k of await DB.keys("files")) if (typeof k === "string" && k.startsWith("aud:" + id + ":")) await DB.del("files", k); };
+  for (const c of cmds) {
+    if (!c || !c.id || done.has(c.id)) continue;
+    try {
+      if (c.op === "del_audio") await delAud(c.book);
+      else if (c.op === "del_book") { nodl.add(c.book); await delAud(c.book); await DB.del("books", c.book); await DB.del("files", c.book); await DB.del("covers", c.book); }
+      else if (c.op === "restore_book") nodl.delete(c.book);
+      else continue;
+      done.add(c.id); n++;
+    } catch (e) { console.error(e); }
+  }
+  if (n) { await DB.put("kv", "cmddone", [...done].slice(-200)); await DB.put("kv", "nodl", [...nodl]); }
+  return n;
+}
+async function writeReport(adapter, device) {
+  try {
+    const books = new Map((await DB.all("books")).map(b => [b.id, b])), bk = [], au = {};
+    for (const k of await DB.keys("files")) {
+      const blob = await DB.get("files", k), sz = (blob && blob.size) || 0;
+      if (typeof k === "string" && k.startsWith("aud:")) { const id = k.split(":")[1]; (au[id] = au[id] || { id, n: 0, size: 0 }); au[id].n++; au[id].size += sz; }
+      else bk.push({ id: k, title: (books.get(k) || {}).title || "", size: sz });
+    }
+    let usage = 0, quota = 0; try { const e = await navigator.storage.estimate(); usage = e.usage || 0; quota = e.quota || 0; } catch (e) { }
+    await adapter.writeJson("devices", device + ".json", { device, updated: nowIso(), usage, quota, books: bk,
+      audio: Object.values(au).map(a => ({ ...a, title: (books.get(a.id) || {}).title || "" })), nodl: (await DB.get("kv", "nodl")) || [],
+      done: ((await DB.get("kv", "cmddone")) || []) });
+  } catch (e) { console.error("report", e); }
+}
+
 async function runSync(adapter, device, onMsg, interactive) {
   onMsg("Connessione…");
   await adapter.ready(interactive);
   const man = await adapter.readJson("", "manifest.json");
   if (!man) throw new Error("manifest.json non trovato: sincronizza prima dal minipc");
+  try { await runCommands(adapter, device); } catch (e) { console.error(e); }
+  const nodl = new Set((await DB.get("kv", "nodl")) || []);
   const local = await DB.all("books"), have = new Map(local.map(b => [b.id, b]));
   const wanted = new Set(man.books.map(b => b.id));
   let dl = 0;
   const fl = new Set((await adapter.list("books")).map(x => x.name));
   for (const b of man.books) {
+    if (nodl.has(b.id)) continue;           // libro tolto da questo telefono su richiesta del minipc
     const cur = have.get(b.id), ok = (await DB.get("files", b.id));
     if (!cur || cur.rev !== b.rev || !ok) {
       if (!fl.has(b.file)) continue;
@@ -196,5 +232,6 @@ async function runSync(adapter, device, onMsg, interactive) {
   }
   await State.saveNow();
   await adapter.writeJson("state", mine, State.export(device));
+  await writeReport(adapter, device);
   return { books: man.books.length, downloaded: dl, changes: ch };
 }
