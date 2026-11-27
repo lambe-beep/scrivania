@@ -45,6 +45,21 @@ const Aud = {
     for (const k of await DB.keys("files")) if (typeof k === "string" && k.startsWith("aud:" + this.bookId + ":" + entry.file + ":") && k !== key) await DB.del("files", k);
     await DB.put("files", key, bl); return bl;
   },
+  async cacheInfo() {   // capitoli scaricati sul telefono per questo libro
+    let n = 0, sz = 0; const pre = "aud:" + this.bookId + ":";
+    for (const k of await DB.keys("files")) if (typeof k === "string" && k.startsWith(pre)) { n++; const b = await DB.get("files", k); sz += (b && b.size) || 0; }
+    return { n, mb: sz / 1048576 };
+  },
+  async showCache() { const c = await this.cacheInfo(); this.msg(c.n ? `Sul telefono: ${c.n} capitoli (${c.mb.toFixed(0)} MB)` : "Nessun audio salvato sul telefono: si scarica mentre ascolti"); },
+  async clearCache(onlyBefore) {   // onlyBefore = indice del capitolo audio: elimina solo quelli precedenti
+    const pre = "aud:" + this.bookId + ":"; let n = 0;
+    const keep = new Set(); if (onlyBefore != null && this.meta) this.meta.chapters.forEach((c, i) => { if (i >= onlyBefore) keep.add(c.file); });
+    for (const k of await DB.keys("files")) if (typeof k === "string" && k.startsWith(pre)) {
+      const f = k.slice(pre.length).split(":")[0]; if (keep.has(f) || (onlyBefore == null && this.a && !this.a.paused && this.meta && this.ci >= 0 && f === this.meta.chapters[this.ci].file)) continue;
+      await DB.del("files", k); n++;
+    }
+    return n;
+  },
   async cached(entry) { return !!(await DB.get("files", "aud:" + this.bookId + ":" + entry.file + ":" + (this.idx[this.bookId] || {}).upd)); },
 
   // --- allineamento frasi audio <-> testo del capitolo
@@ -119,8 +134,8 @@ const Aud = {
   async ended() {
     if (this.sleepChap) { this.sleepChap = false; this.ui(); return; }
     const n = this.ci + 1;
-    if (!this.meta || n >= this.meta.chapters.length) { this.ui(); return; }
-    try { await this.loadChapter(n, 0); await this.a.play(); } catch (e) { this.msg("Capitolo successivo non scaricato: " + e.message); }
+    if (!this.meta || n >= this.meta.chapters.length) { this.ui(); if (Prefs.d.audel) this.clearCache(); return; }
+    try { await this.loadChapter(n, 0); await this.a.play(); if (Prefs.d.audel) this.clearCache(n); } catch (e) { this.msg("Capitolo successivo non scaricato: " + e.message); }
   },
   tick() {
     const a = this.a; if (!a || !this.meta || this.ci < 0) return;
@@ -174,7 +189,7 @@ const Aud = {
 
   wire() {
     if (this._w) return; this._w = true;
-    $("rAud").onclick = () => { const bar = $("audbar"); bar.hidden = !bar.hidden; if (!bar.hidden) { $("ttsbar").hidden = true; $("aRate").value = String(this.rate()); } };
+    $("rAud").onclick = () => { const bar = $("audbar"); bar.hidden = !bar.hidden; if (!bar.hidden) { $("ttsbar").hidden = true; $("aRate").value = String(this.rate()); this.showCache(); } };
     $("aPlay").onclick = () => this.toggle();
     $("aBack").onclick = () => this.seekBy(-15); $("aFwd").onclick = () => this.seekBy(30);
     $("aPrev").onclick = () => this.chap(-1); $("aNext").onclick = () => this.chap(1);
@@ -182,6 +197,10 @@ const Aud = {
     $("aRate").onchange = e => { Prefs.set("arate", +e.target.value); if (this.a) { this.a.playbackRate = this.rate(); } };
     $("aSleep").onchange = e => this.setSleep(e.target.value);
     $("aDl").onclick = () => this.downloadAll();
+    $("aDel").onclick = async () => { if (!this.bookId) return; const c = await this.cacheInfo(); if (!c.n) { this.msg("Niente da eliminare"); return; }
+      if (!confirm(`Eliminare dal telefono l'audio scaricato di questo libro (${c.n} capitoli, ${c.mb.toFixed(0)} MB)? Resta su Drive e si può riscaricare.`)) return;
+      const n = await this.clearCache(); this.msg(`Eliminati ${n} capitoli dal telefono`); };
+    $("aAutoDel").checked = !!Prefs.d.audel; $("aAutoDel").onchange = e => Prefs.set("audel", e.target.checked);
     $("aSeek").oninput = () => { this.seeking = true; $("aTime").textContent = this.fmt($("aSeek").value); };
     $("aSeek").onchange = () => { this.seeking = false; if (this.a && this.ci >= 0) this.a.currentTime = +$("aSeek").value; };
   },
