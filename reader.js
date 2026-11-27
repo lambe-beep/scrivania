@@ -553,26 +553,26 @@ async function openCbz(R, buf) {
 TTS.init(); Ink.initUi();
 
 // ===================================================================== tasto Indietro del telefono
+// Chrome salta le voci di cronologia aggiunte senza un tocco dell'utente: la voce "sentinella" viene quindi
+// (ri)creata anche al primo tocco successivo. Indietro due volte entro 3 secondi = uscita.
 (function () {
-  let exiting = false;
-  const sentinel = () => history.pushState({ scr: 1 }, "");
+  let armed = false, last = 0;
+  const sentinel = () => { if (armed) return; try { history.pushState({ scr: 1 }, ""); armed = true; } catch (e) { } };
   history.replaceState({ scr: 0 }, ""); sentinel();
+  addEventListener("pointerdown", sentinel, true); addEventListener("keydown", sentinel, true);
+  const toast = t => {
+    const d = document.createElement("div"); d.textContent = t;
+    d.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:20px;z-index:99;font-size:14px";
+    document.body.appendChild(d); setTimeout(() => d.remove(), 2500);
+  };
   addEventListener("popstate", () => {
-    if (exiting) return;
+    armed = false;
     if (!$("sheet").hidden) { closeSheet(); return sentinel(); }
     if (!$("selbar").hidden) { $("selbar").hidden = true; return sentinel(); }
     if (!$("ttsbar").hidden && !TTS.on) { $("ttsbar").hidden = true; return sentinel(); }
     if (!$("reader").hidden) { Reader.close(); return sentinel(); }
-    if (confirm("Uscire dall'app?")) {
-      // una pagina web non puo' chiudere l'app con history.back(): si prova window.close(); se non basta, siamo gia' all'ultima voce
-      // della cronologia, quindi un secondo "Indietro" di Android esce davvero
-      exiting = true; try { window.close(); } catch (e) { }
-      setTimeout(() => {
-        const d = document.createElement("div"); d.textContent = "Premi ancora Indietro per uscire";
-        d.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#000d;color:#fff;padding:10px 16px;border-radius:20px;z-index:99;font-size:14px";
-        document.body.appendChild(d);
-        setTimeout(() => { d.remove(); exiting = false; sentinel(); }, 3500);
-      }, 400);
-    } else sentinel();
+    const now = Date.now();
+    if (now - last < 3000) { try { window.close(); } catch (e) { } return; }   // secondo Indietro: lascia uscire
+    last = now; toast("Premi ancora Indietro per uscire"); sentinel();
   });
 })();
