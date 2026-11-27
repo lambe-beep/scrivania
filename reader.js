@@ -141,7 +141,7 @@ const Reader = {
   save(pos, pct) { const R = this.cur; if (!R) return; State.setProgress(R.book.id, pos, pct); $("rStat").textContent = pct.toFixed(0) + "%"; $("rSlider").value = Math.round(pct * 10); },
 };
 $("rBack").onclick = () => Reader.close();
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") State.saveNow(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") State.saveNow(); else if (typeof Aud !== "undefined") Aud.refresh(); });
 
 // ===================================================================== EPUB
 async function openEpub(R, buf) {

@@ -137,6 +137,7 @@ const Aud = {
     if (!this.meta || n >= this.meta.chapters.length) { this.ui(); if (Prefs.d.audel) this.clearCache(); return; }
     try { await this.loadChapter(n, 0); await this.a.play(); if (Prefs.d.audel) this.clearCache(n); } catch (e) { this.msg("Capitolo successivo non scaricato: " + e.message); }
   },
+  refresh() { if (this.a && !this.a.paused) { this.si = -2; this.tick(); } },
   tick() {
     const a = this.a; if (!a || !this.meta || this.ci < 0) return;
     const ent = this.meta.chapters[this.ci], i = this.sentAt(a.currentTime);
